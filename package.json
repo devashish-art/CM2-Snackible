@@ -1,0 +1,9 @@
+{
+  "name": "snackible-cm2-dashboard",
+  "version": "1.0.0",
+  "description": "Snackible QCom CM2 Dashboard",
+  "scripts": {
+    "build": "echo 'Static site, no build needed'",
+    "dev": "npx serve ."
+  }
+}
