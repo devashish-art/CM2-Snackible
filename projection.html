@@ -595,7 +595,8 @@ function render() {
   // Month selector
   const monthCheckboxes = allMonths.map(m => {
     const sel = S.selectedMonths.includes(m);
-    return `<div class="mchk${sel?' sel':''}" data-month="${m}">${m}</div>`;
+    const idx = MONTHS.indexOf(m);
+    return `<div class="mchk${sel?' sel':''}" onclick="toggleMonth(${idx})">${m}</div>`;
   }).join('');
 
   const selectedCount = S.selectedMonths.length;
@@ -701,9 +702,11 @@ function setView(v) {
   render();
 }
 
-function toggleMonth(m) {
-  const idx = S.selectedMonths.indexOf(m);
-  if (idx >= 0) S.selectedMonths.splice(idx,1);
+function toggleMonth(idx) {
+  const m = MONTHS[idx];
+  if (!m) return;
+  const i = S.selectedMonths.indexOf(m);
+  if (i >= 0) S.selectedMonths.splice(i,1);
   else S.selectedMonths.push(m);
   S.selectedMonths.sort((a,b) => MONTHS.indexOf(a)-MONTHS.indexOf(b));
   render();
@@ -731,12 +734,6 @@ function clearAllOverrides() {
 /* ── Boot ────────────────────────────────────────────── */
 loadCM2Data();
 render();
-
-// Attach once — #main persists across renders, its children don't
-document.getElementById('main').addEventListener('click', function(e) {
-  const chip = e.target.closest('[data-month]');
-  if (chip) { toggleMonth(chip.dataset.month); }
-});
 </script>
 </body>
 </html>
