@@ -333,7 +333,7 @@ function aggregatePortal(portalKey) {
 }
 
 /* ── Project one SKU ─────────────────────────────────── */
-function projectSKU(base, portalKey) {
+function projectSKU(base, portalKey, totalBaseNS) {
   const c = cfg();
   const commPct = c.commission/100;
   const taxPct  = c.tax/100;
@@ -344,8 +344,8 @@ function projectSKU(base, portalKey) {
   const key = portalKey+'_'+base.name+(base.isNLC?'__NLC':'');
   const o   = ov[key] || {};
 
-  const gmvG    = 1+(+(o.gmvPct    != null ? o.gmvPct    : (document.getElementById('g-gmv')?.value||10)))/100;
-  const costG   = 1+(+(o.costDelta != null ? o.costDelta : (document.getElementById('g-cost')?.value||0)))/100;
+  const gmvG  = 1+(+(o.gmvPct    != null ? o.gmvPct    : (document.getElementById('g-gmv')?.value||10)))/100;
+  const costG = 1+(+(o.costDelta != null ? o.costDelta : (document.getElementById('g-cost')?.value||0)))/100;
 
   let gmv, netSales, grossSales, commission;
   if (base.isNLC) {
@@ -360,32 +360,37 @@ function projectSKU(base, portalKey) {
     netSales   = grossSales/(1+taxPct);
   }
 
-  const qty   = base.qty*gmvG;
-  const cost  = base.cost*costG;
-  const cogs  = cost*qty;
-  const de    = netSales*dePct;
-  const gm    = netSales-cogs-de;
-  const lab   = netSales*labPct;
-  const log   = netSales*logPct;
-  const cm1   = gm-lab-log;
-  const cm1p  = netSales>0 ? cm1/netSales*100 : 0;
+  const qty  = base.qty*gmvG;
+  const cost = base.cost*costG;
+  const cogs = cost*qty;
+  const de   = netSales*dePct;
+  const gm   = netSales-cogs-de;
+  const lab  = netSales*labPct;
+  const log  = netSales*logPct;
+  const cm1  = gm-lab-log;
+  const cm1p = netSales>0 ? cm1/netSales*100 : 0;
 
-  // promos
+  // NS share of this SKU in total portal NS (for abs allocation)
+  const nsShare = totalBaseNS > 0 ? base.netSales/totalBaseNS : 0;
+
+  // promos — abs is divided proportionally by base NS share
   let promos = 0;
   if (!base.isNLC) {
-    const pm  = o.promoMode != null ? o.promoMode : (document.getElementById('g-promo-mode')?.value||'base');
-    const pv  = o.promoVal  != null ? +o.promoVal  : +(document.getElementById('g-promo-val')?.value||0);
-    if (pm==='pct' && pv) promos = netSales*(pv/100);
-    else if (pm==='abs' && pv) promos = pv;
+    const pm = o.promoMode != null ? o.promoMode : (document.getElementById('g-promo-mode')?.value||'base');
+    const pv = o.promoVal  != null ? o.promoVal  : document.getElementById('g-promo-val')?.value;
+    const pvN = pv !== '' && pv !== null && pv !== undefined ? +pv : null;
+    if      (pm==='pct' && pvN !== null) promos = netSales*(pvN/100);
+    else if (pm==='abs' && pvN !== null) promos = pvN * nsShare; // proportional split
     else promos = base.promos;
   }
 
-  // ads+vis
-  const am  = o.adsMode != null ? o.adsMode : (document.getElementById('g-ads-mode')?.value||'base');
-  const av  = o.adsVal  != null ? +o.adsVal  : +(document.getElementById('g-ads-val')?.value||0);
+  // ads+vis — abs also proportional
+  const am = o.adsMode != null ? o.adsMode : (document.getElementById('g-ads-mode')?.value||'base');
+  const av = o.adsVal  != null ? o.adsVal  : document.getElementById('g-ads-val')?.value;
+  const avN = av !== '' && av !== null && av !== undefined ? +av : null;
   let adsVis;
-  if (am==='pct' && av) adsVis = netSales*(av/100);
-  else if (am==='abs' && av) adsVis = av;
+  if      (am==='pct' && avN !== null) adsVis = netSales*(avN/100);
+  else if (am==='abs' && avN !== null) adsVis = avN * nsShare; // proportional split
   else adsVis = base.ads+base.vis;
 
   const cm2  = cm1-promos-adsVis;
@@ -407,12 +412,15 @@ function renderTables() {
     const skus = aggregatePortal(p);
     if (!skus.length) return '';
 
+    // total base NS for proportional abs allocation
+    const totalBaseNS = skus.filter(s=>!s.isNLC).reduce((a,s)=>a+s.netSales,0);
+
     let bTotNS=0,bTotGMV=0,bTotCOGS=0,bTotCM1=0,bTotPromos=0,bTotAdsVis=0,bTotCM2=0;
     let pTotNS=0,pTotGMV=0,pTotCOGS=0,pTotCM1=0,pTotPromos=0,pTotAdsVis=0,pTotCM2=0;
     const c = cfg();
 
     const rows = skus.map(base => {
-      const proj = projectSKU(base, p);
+      const proj = projectSKU(base, p, totalBaseNS);
       const k    = p+'_'+base.name+(base.isNLC?'__NLC':'');
       const o    = ov[k]||{};
 
@@ -464,26 +472,43 @@ function renderTables() {
         <td class="r" style="color:var(--tx3)"><span class="pill ${pc(bCM2p)}">${fmtPct(bCM2p)}</span></td>
         <td class="r"><span class="pill ${pc(proj.cm2p)}">${fmtPct(proj.cm2p)}</span></td>
         <td class="r"><span class="${+dCM2>=0?'dp':'dn'}">${+dCM2>=0?'+':''}${dCM2}pp</span></td>
-        <td style="min-width:260px">
-          <div class="ov-wrap">
-            <input class="ov-inp${o.gmvPct!=null?' ov':''}" type="number" placeholder="GMV%" title="GMV growth % override" value="${o.gmvPct??''}" oninput="setOv('${ki}','gmvPct',this.value)">
-            <select class="ov-sel" onchange="setOv('${ki}','promoMode',this.value)">
-              <option value="" ${!o.promoMode?'selected':''}>Promo</option>
-              <option value="base" ${o.promoMode==='base'?'selected':''}>Base</option>
-              <option value="pct"  ${o.promoMode==='pct' ?'selected':''}>%NS</option>
-              <option value="abs"  ${o.promoMode==='abs' ?'selected':''}>₹</option>
-            </select>
-            <input class="ov-inp${o.promoVal!=null?' ov':''}" type="number" placeholder="val" title="Promo value" value="${o.promoVal??''}" oninput="setOv('${ki}','promoVal',this.value)">
-            <select class="ov-sel" onchange="setOv('${ki}','adsMode',this.value)">
-              <option value="" ${!o.adsMode?'selected':''}>Ads</option>
-              <option value="base" ${o.adsMode==='base'?'selected':''}>Base</option>
-              <option value="pct"  ${o.adsMode==='pct' ?'selected':''}>%NS</option>
-              <option value="abs"  ${o.adsMode==='abs' ?'selected':''}>₹</option>
-            </select>
-            <input class="ov-inp${o.adsVal!=null?' ov':''}" type="number" placeholder="val" title="Ads value" value="${o.adsVal??''}" oninput="setOv('${ki}','adsVal',this.value)">
-            <input class="ov-inp${o.costDelta!=null?' ov':''}" type="number" placeholder="Cost%" title="Cost Δ%" value="${o.costDelta??''}" oninput="setOv('${ki}','costDelta',this.value)">
-            ${hasOv?`<button class="btn btn-sm btn-outline" style="padding:2px 6px;font-size:10px;color:var(--neg)" onclick="clearOv('${ki}')">✕</button>`:''}
+        <td style="min-width:320px;padding:6px 8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">GMV Growth %</span>
+              <input class="ov-inp${o.gmvPct!=null?' ov':''}" type="number" placeholder="Global default" value="${o.gmvPct??''}" oninput="setOv('${ki}','gmvPct',this.value)">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">Cost/Unit Δ%</span>
+              <input class="ov-inp${o.costDelta!=null?' ov':''}" type="number" placeholder="Global default" value="${o.costDelta??''}" oninput="setOv('${ki}','costDelta',this.value)">
+            </div>
+            ${!base.isNLC?`
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">Promos</span>
+              <div style="display:flex;gap:3px">
+                <select class="ov-sel" style="flex:0 0 auto" onchange="setOv('${ki}','promoMode',this.value)">
+                  <option value=""    ${!o.promoMode?'selected':''}>Global</option>
+                  <option value="base"${o.promoMode==='base'?'selected':''}>Keep base</option>
+                  <option value="pct" ${o.promoMode==='pct'?'selected':''}>% of NS</option>
+                  <option value="abs" ${o.promoMode==='abs'?'selected':''}>₹ total</option>
+                </select>
+                <input class="ov-inp${o.promoVal!=null?' ov':''}" type="number" placeholder="value" value="${o.promoVal??''}" oninput="setOv('${ki}','promoVal',this.value)">
+              </div>
+            </div>` : '<div></div>'}
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">Ads + Visibility</span>
+              <div style="display:flex;gap:3px">
+                <select class="ov-sel" style="flex:0 0 auto" onchange="setOv('${ki}','adsMode',this.value)">
+                  <option value=""    ${!o.adsMode?'selected':''}>Global</option>
+                  <option value="base"${o.adsMode==='base'?'selected':''}>Keep base</option>
+                  <option value="pct" ${o.adsMode==='pct'?'selected':''}>% of NS</option>
+                  <option value="abs" ${o.adsMode==='abs'?'selected':''}>₹ total</option>
+                </select>
+                <input class="ov-inp${o.adsVal!=null?' ov':''}" type="number" placeholder="value" value="${o.adsVal??''}" oninput="setOv('${ki}','adsVal',this.value)">
+              </div>
+            </div>
           </div>
+          ${hasOv?`<button class="btn btn-sm btn-outline" style="margin-top:4px;padding:2px 8px;font-size:10px;color:var(--neg)" onclick="clearOv('${ki}')">✕ Clear overrides</button>`:''}
         </td>
       </tr>`;
     }).join('');
@@ -511,7 +536,7 @@ function renderTables() {
           <th class="r" style="color:var(--tx3)">Base Ads+Vis</th><th class="r">Proj Ads+Vis</th>
           <th class="r" style="color:var(--tx3)">Base CM2%</th><th class="r">Proj CM2%</th>
           <th class="r">Δ CM2pp</th>
-          <th style="min-width:260px">Per-SKU Overrides</th>
+          <th style="min-width:320px">Per-SKU Overrides (GMV% · Cost% · Promos · Ads+Vis)</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr class="gt">
