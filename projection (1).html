@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snackible · CM2 Projections</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#02514F;--green-dk:#083835;--yellow:#FBAE25;--orange:#E35C25;
+  --blue:#4C94D0;--mint:#3ABCA2;--red:#E73744;--warn-bg:#FEF3E2;
+  --bg:#F5F7F5;--surface:#fff;--border:#E2E8E8;
+  --tx:#0D1C1C;--tx2:#4A6363;--tx3:#8AA5A5;
+  --pos:#02514F;--neg:#E73744;
+  --r:8px;--r2:12px;--sh:0 1px 4px rgba(2,81,79,.09);--sh2:0 4px 20px rgba(2,81,79,.12);
+}
+body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--tx);font-size:13px;line-height:1.5}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:220px;min-width:220px;background:var(--green-dk);display:flex;flex-direction:column;padding-bottom:24px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.logo-brand{font-size:15px;font-weight:700;color:var(--yellow)}
+.logo-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;letter-spacing:.04em}
+.sec-label{padding:14px 20px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);cursor:pointer;border-left:3px solid transparent;transition:all .15s;text-decoration:none}
+.nav-item:hover{color:#fff;background:rgba(255,255,255,.05)}
+.nav-item.active{color:var(--yellow);border-left-color:var(--yellow);background:rgba(251,174,37,.08)}
+.portal-chips{display:flex;flex-direction:column;gap:4px;padding:6px 12px}
+.pchip{padding:7px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);transition:all .15s}
+.pchip:hover{color:#fff}
+.pchip.active{border-color:var(--yellow);color:var(--yellow);background:rgba(251,174,37,.12)}
+.main{flex:1;padding:28px 32px;min-width:0;overflow-x:hidden}
+.card{background:var(--surface);border-radius:var(--r2);border:1px solid var(--border);box-shadow:var(--sh);padding:20px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px}
+.stat .lbl{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.stat .val{font-size:22px;font-weight:700;color:var(--tx)}
+.stat .val.pos{color:var(--pos)}.stat .val.neg{color:var(--neg)}.stat .val.warn{color:var(--orange)}
+.stat .sub{font-size:11px;color:var(--tx3);margin-top:3px}
+.abar{height:3px;border-radius:2px;margin-top:12px}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:12px;flex-wrap:wrap}
+.ph-title{font-size:20px;font-weight:700;color:var(--green)}
+.ph-sub{font-size:12px;color:var(--tx2);margin-top:2px}
+.ph-right{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{padding:8px 16px;border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--green);color:#fff}.btn-primary:hover{background:var(--green-dk)}
+.btn-yellow{background:var(--yellow);color:var(--green-dk)}.btn-yellow:hover{filter:brightness(.93)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--tx2)}.btn-outline:hover{border-color:var(--green);color:var(--green)}
+.btn-blue{background:var(--blue);color:#fff}.btn-blue:hover{filter:brightness(.9)}
+.btn-sm{padding:5px 11px;font-size:11px}
+.tcard{padding:0;overflow:hidden}
+.thead-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.thead-title{font-size:13px;font-weight:700;color:var(--tx)}
+.twrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:#F0F5F5}
+th{padding:7px 8px;text-align:left;font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border)}
+th.r,td.r{text-align:right}
+th.c,td.c{text-align:center}
+td{padding:5px 8px;border-bottom:1px solid #F0F5F5;vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#F8FBFB}
+tr.gt td{background:#EBF5F5;font-weight:700;border-top:2px solid var(--mint)}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.pill.pos{background:#E6F7F4;color:var(--pos)}.pill.neg{background:#FEE9EB;color:var(--neg)}.pill.warn{background:var(--warn-bg);color:var(--orange)}
+.pill.neutral{background:#EEF2F2;color:var(--tx2)}
+.pbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pbadge.blinkit{background:rgba(251,174,37,.15);color:#9B7500}
+.pbadge.zepto{background:rgba(227,92,37,.15);color:#A83A0F}
+.pbadge.instamart{background:rgba(76,148,208,.15);color:#235D8A}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--green);color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--sh2);z-index:999;opacity:0;transform:translateY(10px);transition:all .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.err{background:var(--neg)}
+.mb20{margin-bottom:20px}
+.msel{padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;color:var(--tx);min-width:155px}
+.msel:focus{outline:none;border-color:var(--green)}
+
+/* projection-specific */
+.section-hdr{font-size:12px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.section-hdr::after{content:'';flex:1;height:1px;background:var(--border)}
+.portal-block{margin-bottom:32px}
+.portal-block-title{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.override-badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;background:rgba(251,174,37,.15);color:#9B7500}
+
+/* input rows in projection table */
+.proj-input{border:1.5px solid var(--border);border-radius:4px;padding:3px 5px;font-size:11px;font-family:'Poppins',sans-serif;width:72px;color:var(--tx);background:#fff;text-align:right}
+.proj-input:focus{outline:none;border-color:var(--green)}
+.proj-input.override{border-color:var(--yellow);background:#FFFBF0}
+
+/* global assumption bar */
+.assume-bar{background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 20px;margin-bottom:20px}
+.assume-bar-title{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.assume-grid{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.assume-item{display:flex;flex-direction:column;gap:4px}
+.assume-item label{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.assume-item input,.assume-item select{padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;color:var(--tx);width:110px}
+.assume-item input:focus,.assume-item select:focus{outline:none;border-color:var(--green)}
+.assume-note{font-size:10px;color:var(--tx3);margin-top:10px}
+
+/* base selector */
+.base-bar{background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 20px;margin-bottom:16px}
+.base-bar-title{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.month-check-grid{display:flex;flex-wrap:wrap;gap:8px}
+.mchk{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);color:var(--tx2);background:#fff;transition:all .15s;user-select:none}
+.mchk.sel{border-color:var(--green);color:var(--green);background:rgba(2,81,79,.05)}
+.mchk input{display:none}
+.base-summary{margin-top:10px;font-size:11px;color:var(--tx2)}
+.base-summary b{color:var(--tx)}
+
+/* delta cells */
+.delta-pos{color:var(--pos);font-weight:700}
+.delta-neg{color:var(--neg);font-weight:700}
+
+/* tab bar */
+.tabbar{display:flex;gap:3px;margin-bottom:20px;background:#fff;padding:4px;border-radius:10px;border:1px solid var(--border);width:fit-content}
+.tab{padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:var(--tx2);border:none;background:none;font-family:'Poppins',sans-serif;transition:all .15s}
+.tab.active{background:var(--green);color:#fff}
+.tab:hover:not(.active){color:var(--green)}
+
+@media(max-width:880px){
+  .sidebar{width:56px;min-width:56px}
+  .logo-brand,.logo-sub,.nav-item span,.pchip,.sec-label{display:none}
+  .nav-item{justify-content:center;padding:12px}
+  .main{padding:18px 14px}
+  .g4{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-brand">Snackible</div>
+      <div class="logo-sub">CM2 PROJECTIONS</div>
+    </div>
+    <div class="sec-label">Navigation</div>
+    <a class="nav-item" href="index.html"><span class="nav-icon">📊</span><span>CM2 Dashboard</span></a>
+    <a class="nav-item active" href="projection.html"><span class="nav-icon">🔮</span><span>Projections</span></a>
+    <div class="sec-label">View By</div>
+    <div class="portal-chips">
+      <div class="pchip active" id="tab-all"  onclick="setView('all')">🔀 All Portals</div>
+      <div class="pchip"        id="tab-blinkit" onclick="setView('blinkit')">🟡 Blinkit</div>
+      <div class="pchip"        id="tab-zepto"   onclick="setView('zepto')">🟠 Zepto</div>
+      <div class="pchip"        id="tab-instamart" onclick="setView('instamart')">🔵 Instamart</div>
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── Constants (must match app.js) ──────────────────── */
+const STORE_KEY = 'snackible_cm2_v2';
+const MONTHS = [
+  'April 2025','May 2025','June 2025','July 2025','August 2025','September 2025',
+  'October 2025','November 2025','December 2025','January 2026','February 2026','March 2026',
+  'April 2026','May 2026','June 2026','July 2026','August 2026','September 2026',
+  'October 2026','November 2026','December 2026','January 2027','February 2027','March 2027',
+];
+const DEFAULT_CFG = {
+  blinkit:   {commission:35,tax:5,directExp:2.90,labour:2.00,logistics:8.00},
+  zepto:     {commission:35,tax:5,directExp:2.90,labour:2.00,logistics:8.00},
+  instamart: {commission:35,tax:5,directExp:2.90,labour:2.00,logistics:8.00},
+};
+const PORTAL_COLORS = {blinkit:'#FBAE25',zepto:'#E35C25',instamart:'#4C94D0'};
+const PORTAL_LABELS = {blinkit:'Blinkit',zepto:'Zepto',instamart:'Instamart'};
+
+/* ── State ───────────────────────────────────────────── */
+let S = {
+  view: 'all',           // 'all' | 'blinkit' | 'zepto' | 'instamart'
+  selectedMonths: [],    // base months selected (multi-select)
+  data: {},              // loaded from CM2 localStorage
+  config: JSON.parse(JSON.stringify(DEFAULT_CFG)),
+
+  // Global assumptions (defaults, overridable per SKU)
+  gmvGrowthPct: 10,      // % GMV change applied globally
+  promoMode: 'pct',      // 'pct' | 'abs'   — how promos are specified
+  promoPct: null,        // % of GMV (null = keep from base)
+  promoAbs: null,        // absolute override (null = keep from base)
+  adsVisMode: 'pct',     // 'pct' | 'abs'
+  adsVisPct: null,
+  adsVisAbs: null,
+  costDelta: 0,          // % change in cost/unit
+  directExpPct: null,    // override directExp % (null = keep from config)
+  labourPct: null,
+  logisticsPct: null,
+
+  // Per-SKU overrides: { portal_skuName: { gmvPct, promoMode, promoPct, promoAbs, adsVisPct, adsVisAbs, costDelta } }
+  skuOverrides: {},
+};
+
+/* ── Load CM2 data ───────────────────────────────────── */
+function loadCM2Data() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    S.data   = raw.data   || {};
+    S.config = raw.config || JSON.parse(JSON.stringify(DEFAULT_CFG));
+  } catch(e) { S.data = {}; }
+}
+
+/* ── Helpers ─────────────────────────────────────────── */
+const fmt    = n => Math.round(n).toLocaleString('en-IN');
+const fmtD   = n => (+n||0).toFixed(2);
+const fmtPct = n => (+n||0).toFixed(2)+'%';
+const pc     = v => v >= 0 ? 'pos' : 'neg';
+const dKey   = (p,m) => p+'_'+m;
+const shortN = n => n.replace(/^Snackible\s+/i,'').replace(/[\s\|]+\d+[\.\d]*\s*(g|gram|piece|ml)\b.*/i,'').trim();
+const monthsWithData = p => MONTHS.filter(m => S.data[dKey(p,m)]);
+const blankOrUndef = v => v===''||v===null||v===undefined||v===0||v===0.0;
+
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type==='err'?' err':'');
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>el.classList.remove('show'), 2800);
+}
+
+/* ── Base aggregation across selected months ─────────── */
+// Returns { skus: [{name, gmv, qty, cost, grossSales, netSales, promos, ads, vis, nlcPrice}], portalTotals, nlcTotals }
+// NLC is merged into regular skus: nlcPrice used for grossSales, cost for COGS
+function aggregateBase(portal) {
+  const skuMap = {}; // name → accumulated fields
+  let portalPromos = 0, portalAds = 0, portalVis = 0;
+  let nlcAds = 0, nlcVis = 0;
+
+  for (const month of S.selectedMonths) {
+    const entry = S.data[dKey(portal, month)];
+    if (!entry) continue;
+    const cfg = entry.config || S.config[portal];
+    const commPct = (+cfg.commission)/100;
+    const taxPct  = (+cfg.tax)/100;
+    const pt  = entry.portalTotals || {};
+    const npt = entry.nlcTotals || {};
+
+    // Regular SKUs
+    const regRaw = (entry.skus||[]).map(s => {
+      const grossSales = (+s.gmv||0) * (1 - commPct);
+      const netSales   = grossSales / (1 + taxPct);
+      return { netSales, qty: +s.qty||0 };
+    });
+    const regTotalW = regRaw.reduce((a,v)=>a+v.netSales,0);
+
+    (entry.skus||[]).forEach((s,i) => {
+      const share = regTotalW > 0 ? (regRaw[i].netSales / regTotalW) : 0;
+      const promos = blankOrUndef(s.promos) ? (+pt.promos||0)*share : (+s.promos||0);
+      const ads    = blankOrUndef(s.ads)    ? (+pt.ads   ||0)*share : (+s.ads   ||0);
+      const vis    = blankOrUndef(s.visibility) ? (+pt.vis||0)*share : (+s.visibility||0);
+      const grossSales = (+s.gmv||0)*(1-commPct);
+      const netSales   = grossSales/(1+taxPct);
+
+      const key = s.name;
+      if (!skuMap[key]) skuMap[key] = {name:s.name, gmv:0, qty:0, cost:0, _costN:0, grossSales:0, netSales:0, promos:0, ads:0, vis:0, isNLC:false, nlcPrice:0};
+      skuMap[key].gmv        += +s.gmv||0;
+      skuMap[key].qty        += +s.qty||0;
+      // weighted average cost
+      skuMap[key].cost       += (+s.cost||0)*(+s.qty||0);
+      skuMap[key]._costN     += +s.qty||0;
+      skuMap[key].grossSales += grossSales;
+      skuMap[key].netSales   += netSales;
+      skuMap[key].promos     += promos;
+      skuMap[key].ads        += ads;
+      skuMap[key].vis        += vis;
+    });
+    portalPromos += +pt.promos||0;
+    portalAds    += +pt.ads   ||0;
+    portalVis    += +pt.vis   ||0;
+
+    // NLC SKUs — merged in, no commission
+    const nlcRaw = (entry.nlcSkus||[]).map(s => {
+      const grossSales = (+s.nlc_price||0)*(+s.qty||0);
+      const netSales   = grossSales/(1+taxPct);
+      return { netSales, qty: +s.qty||0 };
+    });
+    const nlcTotalW = nlcRaw.reduce((a,v)=>a+v.netSales,0);
+
+    (entry.nlcSkus||[]).forEach((s,i) => {
+      const share = nlcTotalW > 0 ? (nlcRaw[i].netSales / nlcTotalW) : 0;
+      const ads   = blankOrUndef(s.ads)        ? (+npt.ads||0)*share : (+s.ads||0);
+      const vis   = blankOrUndef(s.visibility) ? (+npt.vis||0)*share : (+s.visibility||0);
+      const grossSales = (+s.nlc_price||0)*(+s.qty||0);
+      const netSales   = grossSales/(1+taxPct);
+
+      const key = s.name + '_NLC';
+      if (!skuMap[key]) skuMap[key] = {name:s.name, gmv:0, qty:0, cost:0, _costN:0, grossSales:0, netSales:0, promos:0, ads:0, vis:0, isNLC:true, nlcPrice:0, _nlcPN:0};
+      skuMap[key].gmv        += +s.gmv||0; // ref only
+      skuMap[key].qty        += +s.qty||0;
+      skuMap[key].cost       += (+s.cost||0)*(+s.qty||0);
+      skuMap[key]._costN     += +s.qty||0;
+      skuMap[key].grossSales += grossSales;
+      skuMap[key].netSales   += netSales;
+      skuMap[key].ads        += ads;
+      skuMap[key].vis        += vis;
+      // weighted avg nlcPrice
+      skuMap[key].nlcPrice   += (+s.nlc_price||0)*(+s.qty||0);
+      skuMap[key]._nlcPN     = (skuMap[key]._nlcPN||0) + (+s.qty||0);
+    });
+    nlcAds += +npt.ads||0;
+    nlcVis += +npt.vis||0;
+  }
+
+  // Finalise average cost and nlcPrice
+  const skus = Object.values(skuMap).map(s => ({
+    ...s,
+    cost:     s._costN > 0 ? s.cost / s._costN : 0,
+    nlcPrice: s._nlcPN > 0 ? s.nlcPrice / s._nlcPN : 0,
+  }));
+
+  return { skus, portalTotals:{promos:portalPromos, ads:portalAds, vis:portalVis}, nlcTotals:{ads:nlcAds, vis:nlcVis} };
+}
+
+/* ── Project a single SKU ────────────────────────────── */
+function projectSKU(base, global, skuKey, cfg) {
+  const ov  = S.skuOverrides[skuKey] || {};
+  const commPct  = (+cfg.commission)/100;
+  const taxPct   = (+cfg.tax)/100;
+  const dePct    = (ov.directExpPct != null ? +ov.directExpPct : (global.directExpPct != null ? +global.directExpPct : +cfg.directExp)) / 100;
+  const labPct   = (ov.labourPct    != null ? +ov.labourPct    : (global.labourPct    != null ? +global.labourPct    : +cfg.labour))   / 100;
+  const logPct   = (ov.logisticsPct != null ? +ov.logisticsPct : (global.logisticsPct != null ? +global.logisticsPct : +cfg.logistics)) / 100;
+  const gmvGrowth = 1 + (+(ov.gmvPct != null ? ov.gmvPct : global.gmvGrowthPct)||0)/100;
+  const costGrowth = 1 + (+(ov.costDelta != null ? ov.costDelta : global.costDelta)||0)/100;
+
+  let gmv, grossSales, netSales, commission;
+  if (base.isNLC) {
+    // NLC: grow netSales directly (NLC price × qty — treat as net sales growth proxy)
+    netSales   = base.netSales * gmvGrowth;
+    grossSales = netSales * (1 + taxPct);
+    gmv        = base.gmv * gmvGrowth; // ref
+    commission = 0;
+  } else {
+    gmv        = base.gmv * gmvGrowth;
+    commission = gmv * commPct;
+    grossSales = gmv * (1 - commPct);
+    netSales   = grossSales / (1 + taxPct);
+  }
+
+  const cost       = base.cost * costGrowth;
+  const qty        = base.qty * gmvGrowth; // approximate qty scaling
+  const cogs       = cost * qty;
+  const directExp  = netSales * dePct;
+  const grossMargin= netSales - cogs - directExp;
+  const labour     = netSales * labPct;
+  const logistics  = netSales * logPct;
+  const cm1        = grossMargin - labour - logistics;
+  const cm1Pct     = netSales > 0 ? cm1/netSales*100 : 0;
+
+  // Promos (NLC always 0)
+  let promos = 0;
+  if (!base.isNLC) {
+    const pm   = ov.promoMode != null ? ov.promoMode : global.promoMode;
+    const pPct = ov.promoPct  != null ? +ov.promoPct  : global.promoPct;
+    const pAbs = ov.promoAbs  != null ? +ov.promoAbs  : global.promoAbs;
+    if (pm === 'abs' && pAbs != null) promos = pAbs;
+    else if (pPct != null) promos = netSales * (+pPct/100);
+    else promos = base.promos; // keep from base
+  }
+
+  // Ads + Vis
+  const am   = ov.adsVisMode != null ? ov.adsVisMode : global.adsVisMode;
+  const aPct = ov.adsVisPct  != null ? +ov.adsVisPct  : global.adsVisPct;
+  const aAbs = ov.adsVisAbs  != null ? +ov.adsVisAbs  : global.adsVisAbs;
+  let adsVis;
+  if (am === 'abs' && aAbs != null) adsVis = aAbs;
+  else if (aPct != null) adsVis = netSales * (+aPct/100);
+  else adsVis = base.ads + base.vis; // keep from base
+
+  const cm2    = cm1 - promos - adsVis;
+  const cm2Pct = netSales > 0 ? cm2/netSales*100 : 0;
+
+  return { gmv, commission, grossSales, netSales, qty, cost, cogs, directExp, grossMargin,
+           labour, logistics, cm1, cm1Pct, promos, adsVis, cm2, cm2Pct, isNLC:base.isNLC };
+}
+
+/* ── Build projection for one portal ────────────────── */
+function buildPortalProjection(portal) {
+  if (!S.selectedMonths.length) return null;
+  const cfg = S.config[portal] || DEFAULT_CFG[portal];
+  const base = aggregateBase(portal);
+  if (!base.skus.length) return null;
+
+  const rows = base.skus.map(s => {
+    const key = portal + '_' + s.name + (s.isNLC?'_NLC':'');
+    const proj = projectSKU(s, S, key, cfg);
+    return { base: s, proj, key };
+  });
+
+  return { rows, cfg, portal };
+}
+
+/* ── Render helpers ──────────────────────────────────── */
+function portalBadge(p) {
+  const badges = {
+    blinkit: '<span class="pbadge blinkit">🟡 Blinkit</span>',
+    zepto:   '<span class="pbadge zepto">🟠 Zepto</span>',
+    instamart:'<span class="pbadge instamart">🔵 Instamart</span>',
+  };
+  return badges[p]||'';
+}
+
+function skuOverrideKey(portal, skuName, isNLC) {
+  return portal + '_' + skuName + (isNLC?'_NLC':'');
+}
+
+function ovVal(key, field, fallback) {
+  const ov = S.skuOverrides[key];
+  if (!ov || ov[field] == null) return fallback;
+  return ov[field];
+}
+
+function setOv(key, field, val) {
+  if (!S.skuOverrides[key]) S.skuOverrides[key] = {};
+  if (val === '' || val === null) delete S.skuOverrides[key][field];
+  else S.skuOverrides[key][field] = val;
+}
+
+/* ── Render portal table ─────────────────────────────── */
+function renderPortalTable(pdata) {
+  const {rows, cfg, portal} = pdata;
+  const commPct = +cfg.commission;
+  const taxPct  = +cfg.tax;
+
+  let totB = {gmv:0,commission:0,grossSales:0,netSales:0,qty:0,cogs:0,directExp:0,grossMargin:0,labour:0,logistics:0,cm1:0,promos:0,adsVis:0,cm2:0};
+  let totP = {...totB};
+
+  const rowsHtml = rows.map(({base,proj,key}) => {
+    Object.keys(totB).forEach(k => {
+      if(k==='cost') return;
+      if(base[k]!=null) totB[k] += (base[k]||0);
+      if(proj[k]!=null) totP[k] += (proj[k]||0);
+    });
+    // accumulate base adsVis
+    totB.adsVis = totB.adsVis || 0;
+    totB.adsVis += (base.ads||0)+(base.vis||0);
+
+    const nlcTag = base.isNLC ? '<span style="font-size:9px;font-weight:700;color:var(--blue);background:rgba(76,148,208,.15);padding:1px 6px;border-radius:10px;margin-left:3px">NLC</span>' : '';
+    const name   = shortN(base.name);
+
+    const baseCM1Pct = base.netSales > 0 ? (base.cm1||calcBaseCM1Pct(base,cfg))/base.netSales*100 : 0;
+    const baseCM2Pct = base.netSales > 0 ? (base.cm2||calcBaseCM2(base,cfg))/base.netSales*100 : 0;
+
+    // Compute base CM1 & CM2 properly
+    const bCfg = cfg;
+    const bDE  = base.netSales * (+bCfg.directExp/100);
+    const bGM  = base.netSales - (base.cost*(base.qty||1)) - bDE;
+    const bLab = base.netSales * (+bCfg.labour/100);
+    const bLog = base.netSales * (+bCfg.logistics/100);
+    const bCM1 = bGM - bLab - bLog;
+    const bCM1p= base.netSales > 0 ? bCM1/base.netSales*100 : 0;
+    const bAdV = (base.ads||0)+(base.vis||0);
+    const bCM2 = bCM1 - (base.promos||0) - bAdV;
+    const bCM2p= base.netSales > 0 ? bCM2/base.netSales*100 : 0;
+
+    const gmvDelta = base.gmv > 0 ? ((proj.gmv - base.gmv)/base.gmv*100).toFixed(1) : '—';
+    const cm2Delta = bCM2p != null ? (proj.cm2Pct - bCM2p).toFixed(2) : '—';
+
+    // Per-SKU override inputs
+    const gmvOvVal  = ovVal(key,'gmvPct','');
+    const promoModeOv = ovVal(key,'promoMode', S.promoMode);
+    const promoOvPct= ovVal(key,'promoPct','');
+    const promoOvAbs= ovVal(key,'promoAbs','');
+    const avModeOv  = ovVal(key,'adsVisMode', S.adsVisMode);
+    const avOvPct   = ovVal(key,'adsVisPct','');
+    const avOvAbs   = ovVal(key,'adsVisAbs','');
+    const costOv    = ovVal(key,'costDelta','');
+
+    const hasOv = Object.keys(S.skuOverrides[key]||{}).length > 0;
+
+    return `<tr style="${base.isNLC?'background:#F0F7FF':''}">
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:sticky;left:0;background:${base.isNLC?'#F0F7FF':'#fff'};z-index:1" title="${base.name}">${name}${nlcTag}${hasOv?'<span class="override-badge" style="margin-left:4px">✎</span>':''}</td>
+      <td class="r" style="color:var(--tx2)">₹${fmt(base.gmv)}${base.isNLC?'<small style="color:var(--tx3)"> ref</small>':''}</td>
+      <td class="r">₹${fmt(proj.gmv)}${base.isNLC?'<small style="color:var(--tx3)"> ref</small>':''}</td>
+      <td class="r" style="color:var(--tx2)">₹${fmt(base.netSales)}</td>
+      <td class="r">₹${fmt(proj.netSales)}</td>
+      <td class="r" style="color:var(--tx2)">₹${fmt(base.cogs||base.cost*base.qty)}</td>
+      <td class="r">₹${fmt(proj.cogs)}</td>
+      <td class="r" style="color:var(--tx2)"><span class="pill ${pc(bCM1p)}">${fmtPct(bCM1p)}</span></td>
+      <td class="r"><span class="pill ${pc(proj.cm1Pct)}">${fmtPct(proj.cm1Pct)}</span></td>
+      <td class="r" style="color:${base.isNLC?'var(--tx3)':'var(--tx2)'}">₹${base.isNLC?'0':fmt(base.promos||0)}</td>
+      <td class="r">₹${base.isNLC?'0':fmt(proj.promos)}</td>
+      <td class="r" style="color:var(--tx2)">₹${fmt(bAdV)}</td>
+      <td class="r">₹${fmt(proj.adsVis)}</td>
+      <td class="r" style="color:var(--tx2)"><span class="pill ${pc(bCM2p)}">${fmtPct(bCM2p)}</span></td>
+      <td class="r"><span class="pill ${pc(proj.cm2Pct)}">${fmtPct(proj.cm2Pct)}</span></td>
+      <td class="r"><span class="${+cm2Delta>=0?'delta-pos':'delta-neg'}">${cm2Delta !== '—'?(+cm2Delta>=0?'+':'')+cm2Delta+'pp':'—'}</span></td>
+      <td style="padding:4px 6px;min-width:280px">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          <input class="proj-input${gmvOvVal?' override':''}" style="width:60px" placeholder="GMV%" type="number" value="${gmvOvVal}" title="GMV growth % override" oninput="setSkuOv('${key}','gmvPct',this.value)" />
+          <select style="font-size:10px;padding:2px 4px;border:1.5px solid var(--border);border-radius:4px;font-family:Poppins,sans-serif" onchange="setSkuOv('${key}','promoMode',this.value);render()">
+            <option value="pct" ${promoModeOv==='pct'?'selected':''}>Promo%</option>
+            <option value="abs" ${promoModeOv==='abs'?'selected':''}>Promo₹</option>
+          </select>
+          ${promoModeOv==='abs'
+            ? `<input class="proj-input${promoOvAbs?'override':''}" placeholder="₹ promos" type="number" value="${promoOvAbs}" oninput="setSkuOv('${key}','promoAbs',this.value)" />`
+            : `<input class="proj-input${promoOvPct?'override':''}" placeholder="% of NS" type="number" value="${promoOvPct}" oninput="setSkuOv('${key}','promoPct',this.value)" />`}
+          <select style="font-size:10px;padding:2px 4px;border:1.5px solid var(--border);border-radius:4px;font-family:Poppins,sans-serif" onchange="setSkuOv('${key}','adsVisMode',this.value);render()">
+            <option value="pct" ${avModeOv==='pct'?'selected':''}>Ads%</option>
+            <option value="abs" ${avModeOv==='abs'?'selected':''}>Ads₹</option>
+          </select>
+          ${avModeOv==='abs'
+            ? `<input class="proj-input${avOvAbs?'override':''}" placeholder="₹ ads" type="number" value="${avOvAbs}" oninput="setSkuOv('${key}','adsVisAbs',this.value)" />`
+            : `<input class="proj-input${avOvPct?'override':''}" placeholder="% of NS" type="number" value="${avOvPct}" oninput="setSkuOv('${key}','adsVisPct',this.value)" />`}
+          <input class="proj-input${costOv?'override':''}" style="width:58px" placeholder="Cost%" type="number" value="${costOv}" title="Cost/unit % change" oninput="setSkuOv('${key}','costDelta',this.value)" />
+          ${hasOv?`<button class="btn btn-sm btn-outline" style="padding:2px 7px;font-size:10px;color:var(--neg)" onclick="clearSkuOv('${key}')">✕</button>`:''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Grand total rows
+  const bNetS = totB.netSales||1;
+  const bCM1p = totB.cm1 != null ? totB.cm1/bNetS*100 : 0;
+  // Recompute base totals properly using cfg
+  let bTotGM=0,bTotDE=0,bTotLab=0,bTotLog=0,bTotCM1=0,bTotCM2=0,bTotAdV=0,bTotPromos=0,bTotCOGS=0;
+  rows.forEach(({base}) => {
+    const bDE  = base.netSales*(+cfg.directExp/100);
+    const bGM  = base.netSales-(base.cost*(base.qty||1))-bDE;
+    const bLab = base.netSales*(+cfg.labour/100);
+    const bLog = base.netSales*(+cfg.logistics/100);
+    bTotGM     += bGM;
+    bTotDE     += bDE;
+    bTotLab    += bLab;
+    bTotLog    += bLog;
+    bTotCM1    += bGM-bLab-bLog;
+    bTotPromos += base.isNLC ? 0 : (base.promos||0);
+    bTotAdV    += (base.ads||0)+(base.vis||0);
+    bTotCOGS   += (base.cost*(base.qty||1));
+  });
+  bTotCM2 = bTotCM1 - bTotPromos - bTotAdV;
+  const bCM1pT = totB.netSales>0 ? bTotCM1/totB.netSales*100 : 0;
+  const bCM2pT = totB.netSales>0 ? bTotCM2/totB.netSales*100 : 0;
+  const pCM1pT = totP.netSales>0 ? totP.cm1/totP.netSales*100 : 0;
+  const pCM2pT = totP.netSales>0 ? totP.cm2/totP.netSales*100 : 0;
+  const deltaCM2T = (pCM2pT - bCM2pT).toFixed(2);
+
+  const grandTotal = `<tr class="gt">
+    <td>Grand Total</td>
+    <td class="r" style="color:var(--tx2)">₹${fmt(totB.gmv)}</td>
+    <td class="r">₹${fmt(totP.gmv)}</td>
+    <td class="r" style="color:var(--tx2)">₹${fmt(totB.netSales)}</td>
+    <td class="r">₹${fmt(totP.netSales)}</td>
+    <td class="r" style="color:var(--tx2)">₹${fmt(bTotCOGS)}</td>
+    <td class="r">₹${fmt(totP.cogs)}</td>
+    <td class="r" style="color:var(--tx2)"><span class="pill ${pc(bCM1pT)}">${fmtPct(bCM1pT)}</span></td>
+    <td class="r"><span class="pill ${pc(pCM1pT)}">${fmtPct(pCM1pT)}</span></td>
+    <td class="r" style="color:var(--tx2)">₹${fmt(bTotPromos)}</td>
+    <td class="r">₹${fmt(totP.promos)}</td>
+    <td class="r" style="color:var(--tx2)">₹${fmt(bTotAdV)}</td>
+    <td class="r">₹${fmt(totP.adsVis)}</td>
+    <td class="r" style="color:var(--tx2)"><span class="pill ${pc(bCM2pT)}">${fmtPct(bCM2pT)}</span></td>
+    <td class="r"><span class="pill ${pc(pCM2pT)}">${fmtPct(pCM2pT)}</span></td>
+    <td class="r"><span class="${+deltaCM2T>=0?'delta-pos':'delta-neg'}">${(+deltaCM2T>=0?'+':'')+deltaCM2T}pp</span></td>
+    <td></td>
+  </tr>`;
+
+  return `<div class="portal-block">
+    <div class="portal-block-title">${portalBadge(portal)}<span style="font-size:13px;font-weight:700;color:var(--tx)">${PORTAL_LABELS[portal]}</span></div>
+    <div class="card tcard">
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th style="min-width:180px;position:sticky;left:0;background:#F0F5F5;z-index:2">SKU</th>
+            <th class="r" style="min-width:90px;color:var(--tx3)">Base GMV</th>
+            <th class="r" style="min-width:90px">Proj GMV</th>
+            <th class="r" style="min-width:90px;color:var(--tx3)">Base NS</th>
+            <th class="r" style="min-width:90px">Proj NS</th>
+            <th class="r" style="min-width:80px;color:var(--tx3)">Base COGS</th>
+            <th class="r" style="min-width:80px">Proj COGS</th>
+            <th class="r" style="min-width:70px;color:var(--tx3)">Base CM1%</th>
+            <th class="r" style="min-width:70px">Proj CM1%</th>
+            <th class="r" style="min-width:75px;color:var(--tx3)">Base Promos</th>
+            <th class="r" style="min-width:75px">Proj Promos</th>
+            <th class="r" style="min-width:75px;color:var(--tx3)">Base Ads+Vis</th>
+            <th class="r" style="min-width:75px">Proj Ads+Vis</th>
+            <th class="r" style="min-width:75px;color:var(--tx3)">Base CM2%</th>
+            <th class="r" style="min-width:75px">Proj CM2%</th>
+            <th class="r" style="min-width:70px">Δ CM2pp</th>
+            <th style="min-width:280px">Per-SKU Overrides</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>${grandTotal}</tfoot>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── Main render ─────────────────────────────────────── */
+function render() {
+  const portals = S.view === 'all' ? ['blinkit','zepto','instamart'] : [S.view];
+  const hasData  = MONTHS.some(m => portals.some(p => S.data[dKey(p,m)]));
+  const allMonths = [...new Set(portals.flatMap(p => monthsWithData(p)))].sort((a,b)=>MONTHS.indexOf(a)-MONTHS.indexOf(b));
+
+  // Month selector
+  const monthCheckboxes = allMonths.map(m => {
+    const sel = S.selectedMonths.includes(m);
+    return `<label class="mchk${sel?' sel':''}" data-month="${m}"><input type="checkbox" ${sel?'checked':''}>${m}</label>`;
+  }).join('');
+
+  const selectedCount = S.selectedMonths.length;
+  const baseLabel = selectedCount === 0 ? 'No months selected' : selectedCount === 1 ? S.selectedMonths[0] : `${selectedCount} months aggregated (${S.selectedMonths[0]} → ${S.selectedMonths[S.selectedMonths.length-1]})`;
+
+  // Global assumptions bar
+  const assumeBar = `<div class="assume-bar">
+    <div class="assume-bar-title">📐 Global Assumptions <span style="font-weight:400;font-size:10px;color:var(--tx3)">(applied to all SKUs — override per row in table)</span></div>
+    <div class="assume-grid">
+      <div class="assume-item">
+        <label>GMV Growth %</label>
+        <input type="number" value="${S.gmvGrowthPct}" placeholder="e.g. 10" step="0.5" oninput="S.gmvGrowthPct=this.value;render()" />
+      </div>
+      <div class="assume-item">
+        <label>Promos</label>
+        <select onchange="S.promoMode=this.value;render()">
+          <option value="pct" ${S.promoMode==='pct'?'selected':''}>% of Net Sales</option>
+          <option value="abs" ${S.promoMode==='abs'?'selected':''}>Absolute ₹</option>
+          <option value="base" ${S.promoMode==='base'?'selected':''}>Keep from base</option>
+        </select>
+      </div>
+      ${S.promoMode !== 'base' ? `<div class="assume-item">
+        <label>${S.promoMode==='abs'?'Promos ₹':'Promos % NS'}</label>
+        <input type="number" value="${S.promoMode==='abs'?(S.promoAbs||''):(S.promoPct||'')}" placeholder="${S.promoMode==='abs'?'₹ amount':'e.g. 5'}" step="0.1" oninput="${S.promoMode==='abs'?'S.promoAbs=this.value':'S.promoPct=this.value'};render()" />
+      </div>` : ''}
+      <div class="assume-item">
+        <label>Ads + Visibility</label>
+        <select onchange="S.adsVisMode=this.value;render()">
+          <option value="pct" ${S.adsVisMode==='pct'?'selected':''}>% of Net Sales</option>
+          <option value="abs" ${S.adsVisMode==='abs'?'selected':''}>Absolute ₹</option>
+          <option value="base" ${S.adsVisMode==='base'?'selected':''}>Keep from base</option>
+        </select>
+      </div>
+      ${S.adsVisMode !== 'base' ? `<div class="assume-item">
+        <label>${S.adsVisMode==='abs'?'Ads+Vis ₹':'Ads+Vis % NS'}</label>
+        <input type="number" value="${S.adsVisMode==='abs'?(S.adsVisAbs||''):(S.adsVisPct||'')}" placeholder="${S.adsVisMode==='abs'?'₹ amount':'e.g. 8'}" step="0.1" oninput="${S.adsVisMode==='abs'?'S.adsVisAbs=this.value':'S.adsVisPct=this.value'};render()" />
+      </div>` : ''}
+      <div class="assume-item">
+        <label>Cost/Unit Δ%</label>
+        <input type="number" value="${S.costDelta||''}" placeholder="e.g. 2" step="0.5" oninput="S.costDelta=this.value;render()" />
+      </div>
+      <div class="assume-item">
+        <label>Direct Exp %</label>
+        <input type="number" value="${S.directExpPct||''}" placeholder="keep from config" step="0.1" oninput="S.directExpPct=this.value||null;render()" />
+      </div>
+      <div class="assume-item">
+        <label>Labour %</label>
+        <input type="number" value="${S.labourPct||''}" placeholder="keep from config" step="0.1" oninput="S.labourPct=this.value||null;render()" />
+      </div>
+      <div class="assume-item">
+        <label>Logistics %</label>
+        <input type="number" value="${S.logisticsPct||''}" placeholder="keep from config" step="0.1" oninput="S.logisticsPct=this.value||null;render()" />
+      </div>
+      <div class="assume-item" style="align-self:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="clearAllOverrides()">Clear all SKU overrides</button>
+      </div>
+    </div>
+    <div class="assume-note">ℹ️ Blank fields = keep from base data. Per-SKU overrides (yellow inputs in table) take priority over global values.</div>
+  </div>`;
+
+  // Tables
+  let tablesHtml = '';
+  if (selectedCount === 0) {
+    tablesHtml = '<div class="card" style="text-align:center;padding:44px 20px;color:var(--tx3)"><div style="font-size:32px;margin-bottom:10px">📅</div><p>Select one or more base months above to build projections.</p></div>';
+  } else if (!hasData) {
+    tablesHtml = '<div class="card" style="text-align:center;padding:44px 20px;color:var(--tx3)"><div style="font-size:32px;margin-bottom:10px">📭</div><p>No CM2 data found for the selected portals. Add data in the CM2 Dashboard first.</p></div>';
+  } else {
+    tablesHtml = portals.map(p => {
+      const pd = buildPortalProjection(p);
+      if (!pd) return `<div class="portal-block"><div class="portal-block-title">${portalBadge(p)}</div><div class="card" style="color:var(--tx3);padding:24px;text-align:center">No data for selected months.</div></div>`;
+      return renderPortalTable(pd);
+    }).join('');
+  }
+
+  document.getElementById('main').innerHTML = `
+    <div class="ph">
+      <div>
+        <div class="ph-title">🔮 CM2 Projections</div>
+        <div class="ph-sub">${S.view==='all'?'All Portals':PORTAL_LABELS[S.view]} · ${baseLabel}</div>
+      </div>
+      <div class="ph-right">
+        <a href="index.html" class="btn btn-outline btn-sm">← CM2 Dashboard</a>
+      </div>
+    </div>
+
+    <div class="base-bar">
+      <div class="base-bar-title">📅 Select Base Period <span style="font-weight:400;font-size:10px;color:var(--tx3)">(multi-select — all months are summed as base)</span></div>
+      <div class="month-check-grid">${monthCheckboxes || '<span style="color:var(--tx3);font-size:12px">No data available — add months in CM2 Dashboard first.</span>'}</div>
+      ${selectedCount > 1 ? `<div class="base-summary">Aggregating <b>${selectedCount} months</b> as base: <b>${S.selectedMonths.join(', ')}</b></div>` : ''}
+    </div>
+
+    ${assumeBar}
+    ${tablesHtml}
+  `;
+}
+
+/* ── Event handlers ──────────────────────────────────── */
+function setView(v) {
+  S.view = v;
+  S.selectedMonths = []; // reset selection when changing view
+  document.querySelectorAll('.pchip').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-'+v)?.classList.add('active');
+  render();
+}
+
+function toggleMonth(m) {
+  const idx = S.selectedMonths.indexOf(m);
+  if (idx >= 0) S.selectedMonths.splice(idx,1);
+  else S.selectedMonths.push(m);
+  S.selectedMonths.sort((a,b) => MONTHS.indexOf(a)-MONTHS.indexOf(b));
+  render();
+}
+
+function setSkuOv(key, field, val) {
+  setOv(key, field, val === '' ? null : val);
+  // re-render just the table without full page reset to preserve focus
+  // use a short debounce
+  clearTimeout(window._rt);
+  window._rt = setTimeout(render, 600);
+}
+
+function clearSkuOv(key) {
+  delete S.skuOverrides[key];
+  render();
+}
+
+function clearAllOverrides() {
+  S.skuOverrides = {};
+  render();
+}
+
+/* ── Boot ────────────────────────────────────────────── */
+loadCM2Data();
+render();
+
+// Event delegation for month chips (avoids inline onclick with spaces in month names)
+document.getElementById('main').addEventListener('click', function(e) {
+  const chip = e.target.closest('[data-month]');
+  if (chip) toggleMonth(chip.dataset.month);
+});
+</script>
+</body>
+</html>
