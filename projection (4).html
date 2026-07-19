@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snackible · CM2 Projections</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#02514F;--green-dk:#083835;--yellow:#FBAE25;--orange:#E35C25;
+  --blue:#4C94D0;--mint:#3ABCA2;--bg:#F5F7F5;--surface:#fff;--border:#E2E8E8;
+  --tx:#0D1C1C;--tx2:#4A6363;--tx3:#8AA5A5;--pos:#02514F;--neg:#E73744;
+  --r:8px;--r2:12px;--sh:0 1px 4px rgba(2,81,79,.09);--sh2:0 4px 20px rgba(2,81,79,.12);
+}
+body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--tx);font-size:13px;line-height:1.5}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:220px;min-width:220px;background:var(--green-dk);display:flex;flex-direction:column;padding-bottom:24px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.logo-brand{font-size:15px;font-weight:700;color:var(--yellow)}
+.logo-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;letter-spacing:.04em}
+.sec-label{padding:14px 20px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase}
+.pchip{padding:7px 12px;margin:2px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);transition:all .15s;display:block}
+.pchip:hover{color:#fff}
+.pchip.active{border-color:var(--yellow);color:var(--yellow);background:rgba(251,174,37,.12)}
+.main{flex:1;padding:28px 32px;min-width:0;overflow-x:hidden}
+.card{background:var(--surface);border-radius:var(--r2);border:1px solid var(--border);box-shadow:var(--sh);padding:20px;margin-bottom:20px}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:12px;flex-wrap:wrap}
+.ph-title{font-size:20px;font-weight:700;color:var(--green)}
+.ph-sub{font-size:12px;color:var(--tx2);margin-top:2px}
+.btn{padding:8px 16px;border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--green);color:#fff}.btn-primary:hover{background:var(--green-dk)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--tx2)}.btn-outline:hover{border-color:var(--green);color:var(--green)}
+.btn-yellow{background:var(--yellow);color:var(--green-dk)}.btn-yellow:hover{filter:brightness(.93)}
+.btn-sm{padding:5px 11px;font-size:11px}
+/* section label */
+.slbl{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+/* month chips */
+.mchips{display:flex;flex-wrap:wrap;gap:8px}
+.mchip{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);color:var(--tx2);background:#fff;transition:all .15s;user-select:none}
+.mchip.sel{border-color:var(--green);color:var(--green);background:rgba(2,81,79,.05)}
+/* assume bar */
+.arow{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.aitem{display:flex;flex-direction:column;gap:4px}
+.aitem label{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.aitem input,.aitem select{padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;color:var(--tx);width:110px}
+.aitem input:focus,.aitem select:focus{outline:none;border-color:var(--green)}
+.anote{font-size:10px;color:var(--tx3);margin-top:10px}
+/* table */
+.tcard{padding:0;overflow:hidden;margin-bottom:24px}
+.thead-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.thead-title{font-size:13px;font-weight:700;color:var(--tx)}
+.twrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:#F0F5F5}
+th{padding:7px 8px;text-align:left;font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border)}
+th.r,td.r{text-align:right}th.c,td.c{text-align:center}
+td{padding:5px 8px;border-bottom:1px solid #F0F5F5;vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:none}tr:hover td{background:#F8FBFB}
+tr.gt td{background:#EBF5F5;font-weight:700;border-top:2px solid var(--mint)}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.pill.pos{background:#E6F7F4;color:var(--pos)}.pill.neg{background:#FEE9EB;color:var(--neg)}
+.pbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pbadge.blinkit{background:rgba(251,174,37,.15);color:#9B7500}
+.pbadge.zepto{background:rgba(227,92,37,.15);color:#A83A0F}
+.pbadge.instamart{background:rgba(76,148,208,.15);color:#235D8A}
+.ntag{font-size:9px;font-weight:700;color:var(--blue);background:rgba(76,148,208,.15);padding:1px 6px;border-radius:10px;margin-left:3px}
+/* per-sku override inputs */
+.ov-wrap{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.ov-inp{border:1.5px solid var(--border);border-radius:4px;padding:3px 5px;font-size:11px;font-family:'Poppins',sans-serif;width:68px;color:var(--tx);background:#fff;text-align:right}
+.ov-inp:focus{outline:none;border-color:var(--green)}
+.ov-inp.ov{border-color:var(--yellow);background:#FFFBF0}
+.ov-sel{font-size:10px;padding:2px 4px;border:1.5px solid var(--border);border-radius:4px;font-family:'Poppins',sans-serif}
+.dp{color:var(--pos);font-weight:700}.dn{color:var(--neg);font-weight:700}
+/* toast */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--green);color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--sh2);z-index:999;opacity:0;transform:translateY(10px);transition:all .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}.toast.err{background:var(--neg)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{text-align:center;padding:44px 20px;color:var(--tx3)}
+.empty-state .ei{font-size:32px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-brand">Snackible</div>
+      <div class="logo-sub">CM2 PROJECTIONS</div>
+    </div>
+    <div class="sec-label">View By</div>
+    <div id="portal-chips">
+      <div class="pchip active" id="chip-all"       onclick="setView('all')">🔀 All Portals</div>
+      <div class="pchip"        id="chip-blinkit"   onclick="setView('blinkit')">🟡 Blinkit</div>
+      <div class="pchip"        id="chip-zepto"     onclick="setView('zepto')">🟠 Zepto</div>
+      <div class="pchip"        id="chip-instamart" onclick="setView('instamart')">🔵 Instamart</div>
+    </div>
+    <div class="sec-label" style="margin-top:16px">Config (% values)</div>
+    <div style="padding:0 10px;display:flex;flex-direction:column;gap:8px">
+      <div class="aitem"><label style="color:rgba(255,255,255,.4)">Commission %</label><input id="cfg-comm" type="number" value="35" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff;width:100%"></div>
+      <div class="aitem"><label style="color:rgba(255,255,255,.4)">Tax (GST) %</label><input id="cfg-tax"  type="number" value="5"  style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff;width:100%"></div>
+      <div class="aitem"><label style="color:rgba(255,255,255,.4)">Direct Exp %</label><input id="cfg-de"   type="number" value="2.9" step="0.1" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff;width:100%"></div>
+      <div class="aitem"><label style="color:rgba(255,255,255,.4)">Labour %</label><input id="cfg-lab"  type="number" value="2"   step="0.1" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff;width:100%"></div>
+      <div class="aitem"><label style="color:rgba(255,255,255,.4)">Logistics %</label><input id="cfg-log"  type="number" value="8"   step="0.1" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff;width:100%"></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="ph">
+      <div>
+        <div class="ph-title">🔮 CM2 Projections</div>
+        <div class="ph-sub" id="sub-label">Pull data from sheet, select months, set assumptions</div>
+      </div>
+    </div>
+
+    <!-- Step 1: Pull data -->
+    <div class="card" id="pull-card">
+      <div class="slbl">Step 1 — Pull Base Data from Sheet</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="aitem">
+          <label>Portal</label>
+          <select id="pull-portal" style="padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;width:130px">
+            <option value="Blinkit">Blinkit</option>
+            <option value="Zepto">Zepto</option>
+            <option value="Instamart">Instamart</option>
+          </select>
+        </div>
+        <div class="aitem">
+          <label>Month</label>
+          <select id="pull-month" style="padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;width:150px">
+            <option>April 2025</option><option>May 2025</option><option>June 2025</option>
+            <option>July 2025</option><option>August 2025</option><option>September 2025</option>
+            <option>October 2025</option><option>November 2025</option><option>December 2025</option>
+            <option>January 2026</option><option>February 2026</option><option>March 2026</option>
+            <option>April 2026</option><option>May 2026</option><option selected>June 2026</option>
+            <option>July 2026</option><option>August 2026</option><option>September 2026</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="pullData()">⬇ Pull Month</button>
+        <button class="btn btn-outline btn-sm" onclick="clearAllData()" style="color:var(--neg)">Clear All Data</button>
+      </div>
+      <div id="pulled-summary" style="margin-top:12px;font-size:11px;color:var(--tx3)">No data pulled yet. Pull one or more portal+month combinations to use as base.</div>
+    </div>
+
+    <!-- Step 2: Select base months -->
+    <div class="card" id="months-card" style="display:none">
+      <div class="slbl">Step 2 — Select Base Period (multi-select, all selected months are summed)</div>
+      <div class="mchips" id="month-chips"></div>
+    </div>
+
+    <!-- Step 3: Global assumptions -->
+    <div class="card" id="assume-card" style="display:none">
+      <div class="slbl">Step 3 — Global Assumptions <span style="font-weight:400;color:var(--tx3)">(override per-SKU in table)</span></div>
+      <div class="arow">
+        <div class="aitem"><label>GMV Growth %</label><input id="g-gmv" type="number" value="10" step="0.5" oninput="renderTables()"></div>
+        <div class="aitem">
+          <label>Promos</label>
+          <select id="g-promo-mode" onchange="renderTables()">
+            <option value="base">Keep from base</option>
+            <option value="pct">% of Net Sales</option>
+            <option value="abs">Absolute ₹</option>
+          </select>
+        </div>
+        <div class="aitem"><label>Promos value</label><input id="g-promo-val" type="number" placeholder="blank = keep" step="0.1" oninput="renderTables()"></div>
+        <div class="aitem">
+          <label>Ads + Visibility</label>
+          <select id="g-ads-mode" onchange="renderTables()">
+            <option value="base">Keep from base</option>
+            <option value="pct">% of Net Sales</option>
+            <option value="abs">Absolute ₹</option>
+          </select>
+        </div>
+        <div class="aitem"><label>Ads value</label><input id="g-ads-val" type="number" placeholder="blank = keep" step="0.1" oninput="renderTables()"></div>
+        <div class="aitem"><label>Cost/Unit Δ%</label><input id="g-cost" type="number" value="0" step="0.5" oninput="renderTables()"></div>
+        <button class="btn btn-outline btn-sm" onclick="clearAllOv()" style="align-self:flex-end">Clear SKU overrides</button>
+      </div>
+      <div class="anote">ℹ Blank = keep from base. Yellow inputs in table = per-SKU override active.</div>
+    </div>
+
+    <!-- Tables -->
+    <div id="tables-area"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzi51BNSwZhG7CAiR_KoXsZHA7LW9TLt_h4guVAALDIPx9vmJpiqrNx311-FV4TUHRi/exec';
+const STORE = 'snackible_proj_v1';
+
+// pulled[portal][month] = [{name,gmv,qty,cost,nlc_price,promos,ads,visibility}]
+let pulled = {};
+// selectedMonths[portal] = Set of month strings
+let selectedMonths = { blinkit: new Set(), zepto: new Set(), instamart: new Set() };
+// per-sku overrides keyed by portal_name
+let ov = {};
+let currentView = 'all';
+
+const PORTALS = ['blinkit','zepto','instamart'];
+const PORTAL_MAP = { blinkit:'Blinkit', zepto:'Zepto', instamart:'Instamart' };
+const PORTAL_RMAP = { Blinkit:'blinkit', Zepto:'zepto', Instamart:'instamart' };
+const fmt    = n => Math.round(n).toLocaleString('en-IN');
+const fmtPct = n => (+n||0).toFixed(2)+'%';
+const pc     = v => (+v||0) >= 0 ? 'pos' : 'neg';
+const shortN = n => n.replace(/^Snackible\s+/i,'').replace(/[\s|]+\d+[\.\d]*\s*(g|gram|piece|ml)\b.*/i,'').trim();
+
+function cfg() {
+  return {
+    commission: +document.getElementById('cfg-comm').value || 35,
+    tax:        +document.getElementById('cfg-tax').value  || 5,
+    directExp:  +document.getElementById('cfg-de').value   || 2.9,
+    labour:     +document.getElementById('cfg-lab').value  || 2,
+    logistics:  +document.getElementById('cfg-log').value  || 8,
+  };
+}
+
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.innerHTML = msg;
+  el.className = 'toast show'+(type==='err'?' err':'');
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+function saveLocal() {
+  try { localStorage.setItem(STORE, JSON.stringify({ pulled, selectedMonths: Object.fromEntries(Object.entries(selectedMonths).map(([k,v])=>[k,[...v]])), ov })); } catch(e){}
+}
+function loadLocal() {
+  try {
+    const r = JSON.parse(localStorage.getItem(STORE)||'{}');
+    if (r.pulled) pulled = r.pulled;
+    if (r.selectedMonths) {
+      Object.entries(r.selectedMonths).forEach(([k,v]) => { selectedMonths[k] = new Set(v); });
+    }
+    if (r.ov) ov = r.ov;
+  } catch(e){}
+}
+
+/* ── Pull from sheet ─────────────────────────────────── */
+async function pullData() {
+  const portal  = document.getElementById('pull-portal').value;
+  const month   = document.getElementById('pull-month').value;
+  const portalKey = PORTAL_RMAP[portal];
+  toast('<span class="spinner"></span>Pulling '+portal+' · '+month+'…');
+  try {
+    const url = SHEET_URL+'?month='+encodeURIComponent(month)+'&portal='+encodeURIComponent(portal);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const rows = await res.json();
+    if (!rows || !rows.length) { toast('No data returned for '+portal+' · '+month,'err'); return; }
+    if (!pulled[portalKey]) pulled[portalKey] = {};
+    pulled[portalKey][month] = rows;
+    selectedMonths[portalKey].add(month);
+    saveLocal();
+    toast('✅ '+rows.length+' SKUs pulled — '+portal+' · '+month);
+    refreshUI();
+  } catch(e) {
+    toast('Pull failed: '+e.message,'err');
+  }
+}
+
+function clearAllData() {
+  pulled = {}; ov = {};
+  PORTALS.forEach(p => selectedMonths[p] = new Set());
+  saveLocal();
+  refreshUI();
+  toast('Cleared');
+}
+
+/* ── Aggregate base ──────────────────────────────────── */
+function aggregatePortal(portalKey) {
+  const c = cfg();
+  const commPct = c.commission/100;
+  const taxPct  = c.tax/100;
+  const months  = [...selectedMonths[portalKey]];
+  const skuMap  = {};
+
+  for (const month of months) {
+    const rows = (pulled[portalKey]||{})[month] || [];
+    // split regular vs NLC
+    const reg = rows.filter(r => !(r.nlc_price > 0));
+    const nlc = rows.filter(r => r.nlc_price > 0);
+
+    // regular weight for promo/ads allocation
+    const regRaw = reg.map(r => {
+      const gs = (+r.gmv||0)*(1-commPct);
+      return gs/(1+taxPct);
+    });
+    const regTW = regRaw.reduce((a,v)=>a+v,0);
+
+    reg.forEach((r,i) => {
+      const ns    = regRaw[i];
+      const share = regTW > 0 ? ns/regTW : 0;
+      const promos = +r.promos > 0 ? +r.promos : 0;
+      const ads    = +r.ads    > 0 ? +r.ads    : 0;
+      const vis    = +r.visibility > 0 ? +r.visibility : 0;
+      const gs     = (+r.gmv||0)*(1-commPct);
+      const key    = r.name;
+      if (!skuMap[key]) skuMap[key] = {name:r.name,gmv:0,qty:0,cost:0,_cn:0,netSales:0,promos:0,ads:0,vis:0,isNLC:false};
+      skuMap[key].gmv      += +r.gmv||0;
+      skuMap[key].qty      += +r.qty||0;
+      skuMap[key].cost     += (+r.cost||0)*(+r.qty||0);
+      skuMap[key]._cn      += +r.qty||0;
+      skuMap[key].netSales += ns;
+      skuMap[key].promos   += promos;
+      skuMap[key].ads      += ads;
+      skuMap[key].vis      += vis;
+    });
+
+    // NLC
+    nlc.forEach(r => {
+      const gs  = (+r.nlc_price||0)*(+r.qty||0);
+      const ns  = gs/(1+taxPct);
+      const ads = +r.ads > 0 ? +r.ads : 0;
+      const vis = +r.visibility > 0 ? +r.visibility : 0;
+      const key = r.name+'__NLC';
+      if (!skuMap[key]) skuMap[key] = {name:r.name,gmv:0,qty:0,cost:0,_cn:0,netSales:0,promos:0,ads:0,vis:0,isNLC:true,nlcPrice:0,_np:0};
+      skuMap[key].gmv      += +r.gmv||0;
+      skuMap[key].qty      += +r.qty||0;
+      skuMap[key].cost     += (+r.cost||0)*(+r.qty||0);
+      skuMap[key]._cn      += +r.qty||0;
+      skuMap[key].netSales += ns;
+      skuMap[key].ads      += ads;
+      skuMap[key].vis      += vis;
+      skuMap[key].nlcPrice += (+r.nlc_price||0)*(+r.qty||0);
+      skuMap[key]._np      = (skuMap[key]._np||0)+(+r.qty||0);
+    });
+  }
+
+  return Object.values(skuMap).map(s => ({
+    ...s,
+    cost:     s._cn > 0 ? s.cost/s._cn : 0,
+    nlcPrice: (s._np||0) > 0 ? s.nlcPrice/s._np : 0,
+  }));
+}
+
+/* ── Project one SKU ─────────────────────────────────── */
+function projectSKU(base, portalKey) {
+  const c = cfg();
+  const commPct = c.commission/100;
+  const taxPct  = c.tax/100;
+  const dePct   = c.directExp/100;
+  const labPct  = c.labour/100;
+  const logPct  = c.logistics/100;
+
+  const key = portalKey+'_'+base.name+(base.isNLC?'__NLC':'');
+  const o   = ov[key] || {};
+
+  const gmvG    = 1+(+(o.gmvPct    != null ? o.gmvPct    : (document.getElementById('g-gmv')?.value||10)))/100;
+  const costG   = 1+(+(o.costDelta != null ? o.costDelta : (document.getElementById('g-cost')?.value||0)))/100;
+
+  let gmv, netSales, grossSales, commission;
+  if (base.isNLC) {
+    netSales   = base.netSales * gmvG;
+    grossSales = netSales*(1+taxPct);
+    gmv        = base.gmv*gmvG;
+    commission = 0;
+  } else {
+    gmv        = base.gmv*gmvG;
+    commission = gmv*commPct;
+    grossSales = gmv*(1-commPct);
+    netSales   = grossSales/(1+taxPct);
+  }
+
+  const qty   = base.qty*gmvG;
+  const cost  = base.cost*costG;
+  const cogs  = cost*qty;
+  const de    = netSales*dePct;
+  const gm    = netSales-cogs-de;
+  const lab   = netSales*labPct;
+  const log   = netSales*logPct;
+  const cm1   = gm-lab-log;
+  const cm1p  = netSales>0 ? cm1/netSales*100 : 0;
+
+  // promos
+  let promos = 0;
+  if (!base.isNLC) {
+    const pm  = o.promoMode != null ? o.promoMode : (document.getElementById('g-promo-mode')?.value||'base');
+    const pv  = o.promoVal  != null ? +o.promoVal  : +(document.getElementById('g-promo-val')?.value||0);
+    if (pm==='pct' && pv) promos = netSales*(pv/100);
+    else if (pm==='abs' && pv) promos = pv;
+    else promos = base.promos;
+  }
+
+  // ads+vis
+  const am  = o.adsMode != null ? o.adsMode : (document.getElementById('g-ads-mode')?.value||'base');
+  const av  = o.adsVal  != null ? +o.adsVal  : +(document.getElementById('g-ads-val')?.value||0);
+  let adsVis;
+  if (am==='pct' && av) adsVis = netSales*(av/100);
+  else if (am==='abs' && av) adsVis = av;
+  else adsVis = base.ads+base.vis;
+
+  const cm2  = cm1-promos-adsVis;
+  const cm2p = netSales>0 ? cm2/netSales*100 : 0;
+  return {gmv,grossSales,netSales,qty,cost,cogs,de,gm,lab,log,cm1,cm1p,promos,adsVis,cm2,cm2p,isNLC:base.isNLC};
+}
+
+/* ── Render tables ───────────────────────────────────── */
+function renderTables() {
+  const portals = currentView==='all' ? PORTALS : [currentView];
+  const area    = document.getElementById('tables-area');
+
+  const hasSelected = portals.some(p=>[...selectedMonths[p]].length>0);
+  if (!hasSelected) { area.innerHTML=''; return; }
+
+  area.innerHTML = portals.map(p => {
+    const months = [...selectedMonths[p]];
+    if (!months.length) return '';
+    const skus = aggregatePortal(p);
+    if (!skus.length) return '';
+
+    let bTotNS=0,bTotGMV=0,bTotCOGS=0,bTotCM1=0,bTotPromos=0,bTotAdsVis=0,bTotCM2=0;
+    let pTotNS=0,pTotGMV=0,pTotCOGS=0,pTotCM1=0,pTotPromos=0,pTotAdsVis=0,pTotCM2=0;
+    const c = cfg();
+
+    const rows = skus.map(base => {
+      const proj = projectSKU(base, p);
+      const k    = p+'_'+base.name+(base.isNLC?'__NLC':'');
+      const o    = ov[k]||{};
+
+      // base metrics using current cfg
+      const commPct = c.commission/100;
+      const taxPct  = c.tax/100;
+      const dePct   = c.directExp/100;
+      const labPct  = c.labour/100;
+      const logPct  = c.logistics/100;
+
+      let bNS;
+      if (base.isNLC) { bNS = base.netSales; }
+      else { bNS = base.netSales; }
+      const bCOGS = base.cost*(base.qty||1);
+      const bDE   = bNS*dePct;
+      const bGM   = bNS-bCOGS-bDE;
+      const bLab  = bNS*labPct;
+      const bLog  = bNS*logPct;
+      const bCM1  = bGM-bLab-bLog;
+      const bCM1p = bNS>0 ? bCM1/bNS*100 : 0;
+      const bAdV  = base.ads+base.vis;
+      const bPro  = base.isNLC?0:base.promos;
+      const bCM2  = bCM1-bPro-bAdV;
+      const bCM2p = bNS>0 ? bCM2/bNS*100 : 0;
+
+      bTotNS+=bNS; bTotGMV+=base.gmv; bTotCOGS+=bCOGS; bTotCM1+=bCM1; bTotPromos+=bPro; bTotAdsVis+=bAdV; bTotCM2+=bCM2;
+      pTotNS+=proj.netSales; pTotGMV+=proj.gmv; pTotCOGS+=proj.cogs; pTotCM1+=proj.cm1; pTotPromos+=proj.promos; pTotAdsVis+=proj.adsVis; pTotCM2+=proj.cm2;
+
+      const dCM2 = (proj.cm2p-bCM2p).toFixed(2);
+      const hasOv = Object.keys(o).length>0;
+      const nlcTag = base.isNLC ? '<span class="ntag">NLC</span>' : '';
+
+      // per-sku override inputs (encoded key index to avoid space issues)
+      const ki = encodeURIComponent(k);
+      return `<tr style="${base.isNLC?'background:#F0F7FF':''}">
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:sticky;left:0;background:${base.isNLC?'#F0F7FF':'#fff'};z-index:1" title="${base.name}">${shortN(base.name)}${nlcTag}${hasOv?'<span style="font-size:9px;color:var(--orange);margin-left:3px">✎</span>':''}</td>
+        <td class="r" style="color:var(--tx3)">₹${fmt(base.gmv)}</td>
+        <td class="r">₹${fmt(proj.gmv)}</td>
+        <td class="r" style="color:var(--tx3)">₹${fmt(bNS)}</td>
+        <td class="r">₹${fmt(proj.netSales)}</td>
+        <td class="r" style="color:var(--tx3)">₹${fmt(bCOGS)}</td>
+        <td class="r">₹${fmt(proj.cogs)}</td>
+        <td class="r" style="color:var(--tx3)"><span class="pill ${pc(bCM1p)}">${fmtPct(bCM1p)}</span></td>
+        <td class="r"><span class="pill ${pc(proj.cm1p)}">${fmtPct(proj.cm1p)}</span></td>
+        <td class="r" style="color:var(--tx3)">₹${base.isNLC?'0':fmt(bPro)}</td>
+        <td class="r">₹${fmt(proj.promos)}</td>
+        <td class="r" style="color:var(--tx3)">₹${fmt(bAdV)}</td>
+        <td class="r">₹${fmt(proj.adsVis)}</td>
+        <td class="r" style="color:var(--tx3)"><span class="pill ${pc(bCM2p)}">${fmtPct(bCM2p)}</span></td>
+        <td class="r"><span class="pill ${pc(proj.cm2p)}">${fmtPct(proj.cm2p)}</span></td>
+        <td class="r"><span class="${+dCM2>=0?'dp':'dn'}">${+dCM2>=0?'+':''}${dCM2}pp</span></td>
+        <td style="min-width:260px">
+          <div class="ov-wrap">
+            <input class="ov-inp${o.gmvPct!=null?' ov':''}" type="number" placeholder="GMV%" title="GMV growth % override" value="${o.gmvPct??''}" oninput="setOv('${ki}','gmvPct',this.value)">
+            <select class="ov-sel" onchange="setOv('${ki}','promoMode',this.value)">
+              <option value="" ${!o.promoMode?'selected':''}>Promo</option>
+              <option value="base" ${o.promoMode==='base'?'selected':''}>Base</option>
+              <option value="pct"  ${o.promoMode==='pct' ?'selected':''}>%NS</option>
+              <option value="abs"  ${o.promoMode==='abs' ?'selected':''}>₹</option>
+            </select>
+            <input class="ov-inp${o.promoVal!=null?' ov':''}" type="number" placeholder="val" title="Promo value" value="${o.promoVal??''}" oninput="setOv('${ki}','promoVal',this.value)">
+            <select class="ov-sel" onchange="setOv('${ki}','adsMode',this.value)">
+              <option value="" ${!o.adsMode?'selected':''}>Ads</option>
+              <option value="base" ${o.adsMode==='base'?'selected':''}>Base</option>
+              <option value="pct"  ${o.adsMode==='pct' ?'selected':''}>%NS</option>
+              <option value="abs"  ${o.adsMode==='abs' ?'selected':''}>₹</option>
+            </select>
+            <input class="ov-inp${o.adsVal!=null?' ov':''}" type="number" placeholder="val" title="Ads value" value="${o.adsVal??''}" oninput="setOv('${ki}','adsVal',this.value)">
+            <input class="ov-inp${o.costDelta!=null?' ov':''}" type="number" placeholder="Cost%" title="Cost Δ%" value="${o.costDelta??''}" oninput="setOv('${ki}','costDelta',this.value)">
+            ${hasOv?`<button class="btn btn-sm btn-outline" style="padding:2px 6px;font-size:10px;color:var(--neg)" onclick="clearOv('${ki}')">✕</button>`:''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const bCM1pT = bTotNS>0?bTotCM1/bTotNS*100:0;
+    const bCM2pT = bTotNS>0?bTotCM2/bTotNS*100:0;
+    const pCM1pT = pTotNS>0?pTotCM1/pTotNS*100:0;
+    const pCM2pT = pTotNS>0?pTotCM2/pTotNS*100:0;
+    const dTot   = (pCM2pT-bCM2pT).toFixed(2);
+
+    const badge = {blinkit:'<span class="pbadge blinkit">🟡 Blinkit</span>',zepto:'<span class="pbadge zepto">🟠 Zepto</span>',instamart:'<span class="pbadge instamart">🔵 Instamart</span>'}[p];
+
+    return `<div class="tcard card" style="padding:0">
+      <div class="thead-row">
+        <div class="thead-title" style="display:flex;align-items:center;gap:8px">${badge} <span style="font-size:12px;color:var(--tx2)">Base: ${months.join(', ')}</span></div>
+      </div>
+      <div class="twrap"><table>
+        <thead><tr>
+          <th style="min-width:160px;position:sticky;left:0;background:#F0F5F5;z-index:2">SKU</th>
+          <th class="r" style="color:var(--tx3)">Base GMV</th><th class="r">Proj GMV</th>
+          <th class="r" style="color:var(--tx3)">Base NS</th><th class="r">Proj NS</th>
+          <th class="r" style="color:var(--tx3)">Base COGS</th><th class="r">Proj COGS</th>
+          <th class="r" style="color:var(--tx3)">Base CM1%</th><th class="r">Proj CM1%</th>
+          <th class="r" style="color:var(--tx3)">Base Promos</th><th class="r">Proj Promos</th>
+          <th class="r" style="color:var(--tx3)">Base Ads+Vis</th><th class="r">Proj Ads+Vis</th>
+          <th class="r" style="color:var(--tx3)">Base CM2%</th><th class="r">Proj CM2%</th>
+          <th class="r">Δ CM2pp</th>
+          <th style="min-width:260px">Per-SKU Overrides</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="gt">
+          <td>Grand Total</td>
+          <td class="r" style="color:var(--tx3)">₹${fmt(bTotGMV)}</td><td class="r">₹${fmt(pTotGMV)}</td>
+          <td class="r" style="color:var(--tx3)">₹${fmt(bTotNS)}</td><td class="r">₹${fmt(pTotNS)}</td>
+          <td class="r" style="color:var(--tx3)">₹${fmt(bTotCOGS)}</td><td class="r">₹${fmt(pTotCOGS)}</td>
+          <td class="r" style="color:var(--tx3)"><span class="pill ${pc(bCM1pT)}">${fmtPct(bCM1pT)}</span></td><td class="r"><span class="pill ${pc(pCM1pT)}">${fmtPct(pCM1pT)}</span></td>
+          <td class="r" style="color:var(--tx3)">₹${fmt(bTotPromos)}</td><td class="r">₹${fmt(pTotPromos)}</td>
+          <td class="r" style="color:var(--tx3)">₹${fmt(bTotAdsVis)}</td><td class="r">₹${fmt(pTotAdsVis)}</td>
+          <td class="r" style="color:var(--tx3)"><span class="pill ${pc(bCM2pT)}">${fmtPct(bCM2pT)}</span></td><td class="r"><span class="pill ${pc(pCM2pT)}">${fmtPct(pCM2pT)}</span></td>
+          <td class="r"><span class="${+dTot>=0?'dp':'dn'}">${+dTot>=0?'+':''}${dTot}pp</span></td>
+          <td></td>
+        </tr></tfoot>
+      </table></div>
+    </div>`;
+  }).join('');
+}
+
+function refreshUI() {
+  // Show/hide cards
+  const hasPulled = PORTALS.some(p => Object.keys(pulled[p]||{}).length>0);
+  document.getElementById('months-card').style.display = hasPulled?'block':'none';
+  document.getElementById('assume-card').style.display = hasPulled?'block':'none';
+
+  // Rebuild month chips
+  if (hasPulled) {
+    const portals = currentView==='all' ? PORTALS : [currentView];
+    const allMonths = [...new Set(portals.flatMap(p=>Object.keys(pulled[p]||{})))];
+    // Sort by natural month order
+    const ORDER = ['April 2025','May 2025','June 2025','July 2025','August 2025','September 2025','October 2025','November 2025','December 2025','January 2026','February 2026','March 2026','April 2026','May 2026','June 2026','July 2026','August 2026','September 2026','October 2026','November 2026','December 2026'];
+    allMonths.sort((a,b)=>ORDER.indexOf(a)-ORDER.indexOf(b));
+
+    document.getElementById('month-chips').innerHTML = allMonths.map((m,i) => {
+      const selByAny = portals.some(p=>selectedMonths[p].has(m));
+      return `<div class="mchip${selByAny?' sel':''}" onclick="toggleMonth(${i})" data-mi="${i}" data-m="${m}">${m}</div>`;
+    }).join('');
+
+    // store month list for onclick lookup
+    window._months = allMonths;
+  }
+
+  // update pulled summary
+  const lines = PORTALS.flatMap(p => Object.keys(pulled[p]||{}).map(m=>`${PORTAL_MAP[p]} · ${m}`));
+  document.getElementById('pulled-summary').textContent = lines.length ? 'Pulled: '+lines.join(' | ') : 'No data pulled yet.';
+
+  renderTables();
+}
+
+function toggleMonth(i) {
+  const m = window._months[i];
+  if (!m) return;
+  const portals = currentView==='all' ? PORTALS : [currentView];
+  // check if any of the visible portals has this month selected
+  const anySelected = portals.some(p=>selectedMonths[p].has(m));
+  portals.forEach(p => {
+    if ((pulled[p]||{})[m]) { // only toggle for portals that have data for this month
+      if (anySelected) selectedMonths[p].delete(m);
+      else selectedMonths[p].add(m);
+    }
+  });
+  saveLocal();
+  refreshUI();
+}
+
+function setOv(encodedKey, field, val) {
+  const k = decodeURIComponent(encodedKey);
+  if (!ov[k]) ov[k]={};
+  if (val===''||val===null) delete ov[k][field];
+  else ov[k][field] = val;
+  saveLocal();
+  clearTimeout(window._rt);
+  window._rt = setTimeout(renderTables, 500);
+}
+
+function clearOv(encodedKey) {
+  delete ov[decodeURIComponent(encodedKey)];
+  saveLocal();
+  renderTables();
+}
+
+function clearAllOv() { ov={}; saveLocal(); renderTables(); }
+
+function setView(v) {
+  currentView = v;
+  document.querySelectorAll('.pchip').forEach(el=>el.classList.remove('active'));
+  document.getElementById('chip-'+v).classList.add('active');
+  refreshUI();
+}
+
+// Boot
+loadLocal();
+refreshUI();
+</script>
+</body>
+</html>
