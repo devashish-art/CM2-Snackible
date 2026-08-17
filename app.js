@@ -927,7 +927,7 @@ function delNlc(i)   { ES.nlcSkus.splice(i,1); refreshNlc(); }
 function prefillReg(){ const ex=new Set(ES.skus.map(s=>s.name)); (PORTAL_SKUS[S.portal]||[]).forEach(n=>{ if(!ex.has(n))ES.skus.push(blankSku(n)); }); refreshReg(); }
 function prefillNlc(){ const ex=new Set(ES.nlcSkus.map(s=>s.name)); NLC_SKUS.forEach(n=>{ if(!ex.has(n))ES.nlcSkus.push(blankNlc(n)); }); refreshNlc(); }
 
-const SHEET_IMPORT_URL = 'https://script.google.com/macros/s/AKfycbzaI0HK5nctGrxn3euFGl9ZDHQGrfOe_Yea-QV9w70_ChyfbeDhOeVt77BS9NAf1Dg4/exec';
+const SHEET_IMPORT_URL = 'https://script.google.com/macros/s/AKfycbzZWmiZk9RCmg6RTqqgObYjzMn545VGHorUQg66yHo1R-f9NbpDqyjBqRXlnJWpLHU-/exec'';
 
 async function importFromSheet() {
   const month = document.getElementById('es-month')?.value || ES.month;
