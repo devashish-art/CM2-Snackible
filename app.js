@@ -901,7 +901,7 @@ function _refreshNlcRow(i){
   if(ros[2]){ros[2].value=fmtPct(c.cm2Pct);ros[2].className='ro '+pc(c.cm2Pct);}
 }
 
-function updateCfg(f,v){ S.config[S.portal][f]=parseFloat(v)||0; refreshReg(); refreshNlc(); }
+function updateCfg(f,v){ const val=parseFloat(v)||0; ['blinkit','zepto','instamart'].forEach(p=>{ S.config[p][f]=val; }); refreshReg(); refreshNlc(); }
 function updatePT(f,v){ 
   ES.portalTotals[f] = f==='splitBy' ? v : (parseFloat(v)||0); 
   if(f==='splitBy'){
