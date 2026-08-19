@@ -1586,7 +1586,7 @@ function viewTrends(){
     var opts=baseOpts(true,'%',true);
     opts.interaction={mode:'index',intersect:false};
     opts.plugins.legend={display:false};
-    opts.plugins.tooltip.callbacks.label=function(ctx){return ' Blended CM2%: '+ctx.parsed.y.toFixed(2)+'%';};
+    opts.plugins.tooltip.callbacks.label=function(ctx){return ' Blended CM2%: '+ctx.parsed.y.toFixed(3)+'%';};
     charts['c-cum-cm2']=new Chart(cv,{type:'line',data:{labels:labels,datasets:datasets},options:opts});
     charts['c-cum-cm2']._snackPct=true;charts['c-cum-cm2']._snackUnit='%';
   }
