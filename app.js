@@ -486,7 +486,7 @@ function viewDashboard() {
     {label:'Logistics',    val: cfg.logistics,    unit:'%'},
   ].map(m=>`<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:8px 14px;min-width:110px">
     <div style="font-size:10px;color:#94A3B8;margin-bottom:3px">${m.label}</div>
-    <div style="font-size:16px;font-weight:700;color:#F1F5F9">${(+m.val).toFixed(1)}${m.unit}</div>
+    <div style="font-size:16px;font-weight:700;color:#F1F5F9">${(+m.val).toFixed(3)}${m.unit}</div>
   </div>`).join('')
   +'</div></div></div>';
 }
