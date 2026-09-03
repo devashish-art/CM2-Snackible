@@ -497,7 +497,6 @@ function viewDashboard() {
 let ES = { skus:[], nlcSkus:[], month:'', portalTotals:{ads:'',vis:'',promos:'',splitBy:'netSales'}, nlcTotals:{ads:'',vis:''} };
 
 function initES() {
-  function initES() {
   ES.portal = S.portal;
   if (S.month && S.data[dKey(S.portal,S.month)]) {
     const ex = S.data[dKey(S.portal,S.month)];
