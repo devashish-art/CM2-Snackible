@@ -497,9 +497,11 @@ function viewDashboard() {
 let ES = { skus:[], nlcSkus:[], month:'', portalTotals:{ads:'',vis:'',promos:'',splitBy:'netSales'}, nlcTotals:{ads:'',vis:''} };
 
 function initES() {
+  function initES() {
   ES.portal = S.portal;
   if (S.month && S.data[dKey(S.portal,S.month)]) {
     const ex = S.data[dKey(S.portal,S.month)];
+    if (ex.config) S.config[S.portal] = JSON.parse(JSON.stringify(ex.config));
     ES.skus         = JSON.parse(JSON.stringify(ex.skus ||[])).map(s=>({
       ...s,
       promos: (s.promos===0||s.promos===''||s.promos===null||s.promos===undefined) ? '' : s.promos,
