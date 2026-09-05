@@ -270,112 +270,205 @@ function exportAllPortalsCurrentMonth() {
   const portals = ['blinkit', 'zepto', 'instamart'];
   const sel = (S.month && MONTHS.includes(S.month)) ? S.month : null;
 
+  const COLS = ['Portal','Month','SKU','Type','GMV (Rs)','Qty','Cost/Unit (Rs)',
+    'Gross Sales (Rs)','GST (Rs)','Net Sales (Rs)','Commission (Rs)','COGS (Rs)',
+    'Direct Exp (Rs)','Gross Margin (Rs)','Labour (Rs)','Logistics (Rs)',
+    'CM1 (Rs)','CM1%','Promos (Rs)','Ads (Rs)','Visibility (Rs)','CM2 (Rs)','CM2%'];
+
+  const blankRow = () => {
+    const r = {}; COLS.forEach(c => r[c] = ''); return r;
+  };
+
+  const skuRow = (portal, month, sku, isNLC, c) => ({
+    'Portal':            pLabel(portal),
+    'Month':             month,
+    'SKU':               sku.name,
+    'Type':              isNLC ? 'NLC' : (sku.custom ? 'Custom' : 'Regular'),
+    'GMV (Rs)':          +c.gmv.toFixed(2),
+    'Qty':               +c.qty,
+    'Cost/Unit (Rs)':    +(+c.cost || 0).toFixed(2),
+    'Gross Sales (Rs)':  +c.grossSales.toFixed(2),
+    'GST (Rs)':          +c.taxAmt.toFixed(2),
+    'Net Sales (Rs)':    +c.netSales.toFixed(2),
+    'Commission (Rs)':   +c.commission.toFixed(2),
+    'COGS (Rs)':         +c.cogs.toFixed(2),
+    'Direct Exp (Rs)':   +c.directExp.toFixed(2),
+    'Gross Margin (Rs)': +c.grossMargin.toFixed(2),
+    'Labour (Rs)':       +c.labour.toFixed(2),
+    'Logistics (Rs)':    +c.logistics.toFixed(2),
+    'CM1 (Rs)':          +c.cm1.toFixed(2),
+    'CM1%':              +c.cm1Pct.toFixed(2),
+    'Promos (Rs)':       +c.promos.toFixed(2),
+    'Ads (Rs)':          +c.ads.toFixed(2),
+    'Visibility (Rs)':   +c.vis.toFixed(2),
+    'CM2 (Rs)':          +c.cm2.toFixed(2),
+    'CM2%':              +c.cm2Pct.toFixed(2),
+  });
+
+  const totalRow = (portal, month, t) => ({
+    'Portal': pLabel(portal), 'Month': month, 'SKU': '\u25B6 TOTAL', 'Type': '',
+    'GMV (Rs)': +t.gmv.toFixed(2), 'Qty': +t.qty, 'Cost/Unit (Rs)': '',
+    'Gross Sales (Rs)': +t.grossSales.toFixed(2), 'GST (Rs)': +t.taxAmt.toFixed(2),
+    'Net Sales (Rs)': +t.netSales.toFixed(2), 'Commission (Rs)': +t.commission.toFixed(2),
+    'COGS (Rs)': +t.cogs.toFixed(2), 'Direct Exp (Rs)': +t.directExp.toFixed(2),
+    'Gross Margin (Rs)': +t.grossMargin.toFixed(2), 'Labour (Rs)': +t.labour.toFixed(2),
+    'Logistics (Rs)': +t.logistics.toFixed(2), 'CM1 (Rs)': +t.cm1.toFixed(2),
+    'CM1%': +t.cm1Pct.toFixed(2), 'Promos (Rs)': +t.promos.toFixed(2),
+    'Ads (Rs)': +t.ads.toFixed(2), 'Visibility (Rs)': +t.vis.toFixed(2),
+    'CM2 (Rs)': +t.cm2.toFixed(2), 'CM2%': +t.cm2Pct.toFixed(2),
+  });
+
+  // ── Sheet 1: SKU breakdown ────────────────────────────
   const allRows = [];
   let anyData = false;
+  const exportMonths = {}; // track which month each portal exported
 
-  portals.forEach(portal => {
+  portals.forEach((portal, pi) => {
     const months = monthsFor(portal);
     const month = (sel && months.includes(sel)) ? sel
       : months.length ? months[months.length - 1] : null;
     if (!month) return;
+    exportMonths[portal] = month;
 
-    const e   = S.data[dKey(portal, month)] || {};
-    const cfg = e.config || S.config[portal];
-    const pt  = Object.assign({}, e.portalTotals || {}, { splitBy: S.dashSplit });
-    const nlcPT = Object.assign({}, e.nlcTotals || {}, { splitBy: S.dashSplit });
-
+    const e    = S.data[dKey(portal, month)] || {};
+    const cfg  = e.config || S.config[portal];
+    const pt   = Object.assign({}, e.portalTotals || {}, { splitBy: S.dashSplit });
+    const nlcPT= Object.assign({}, e.nlcTotals || {}, { splitBy: S.dashSplit });
     const regSkus = e.skus    || [];
     const nlcSkus = e.nlcSkus || [];
 
     function rawWeights(arr, isNLC) {
-      return arr.map(s => {
-        const c = calcSKU(s, cfg, isNLC, 0, 0, 0);
-        return { netSales: c.netSales, qty: c.qty || (+s.qty || 0) };
-      });
+      return arr.map(s => { const c = calcSKU(s, cfg, isNLC, 0, 0, 0); return { netSales: c.netSales, qty: c.qty || (+s.qty || 0) }; });
     }
     const regRaw = rawWeights(regSkus, false);
     const nlcRaw = rawWeights(nlcSkus, true);
     const splitBy = S.dashSplit;
-    const regW = splitBy === 'qty'
-      ? regRaw.reduce((a, v) => a + (v.qty || 0), 0)
-      : regRaw.reduce((a, v) => a + (v.netSales || 0), 0);
-    const nlcW = splitBy === 'qty'
-      ? nlcRaw.reduce((a, v) => a + (v.qty || 0), 0)
-      : nlcRaw.reduce((a, v) => a + (v.netSales || 0), 0);
+    const regW = splitBy === 'qty' ? regRaw.reduce((a,v)=>a+(v.qty||0),0) : regRaw.reduce((a,v)=>a+(v.netSales||0),0);
+    const nlcW = splitBy === 'qty' ? nlcRaw.reduce((a,v)=>a+(v.qty||0),0) : nlcRaw.reduce((a,v)=>a+(v.netSales||0),0);
+    const pAds = pt.ads||0, pVis = pt.vis||0, pPromos = pt.promos||0;
+    const nAds = nlcPT.ads||0, nVis = nlcPT.vis||0;
 
-    const pAds = pt.ads || 0, pVis = pt.vis || 0, pPromos = pt.promos || 0;
-    const nAds = nlcPT.ads || 0, nVis = nlcPT.vis || 0;
+    // blank row before each portal (except first)
+    if (pi > 0) allRows.push(blankRow());
 
     function buildSkuRows(arr, isNLC, rawArr, totalW, adsP, visP, promosP) {
       arr.forEach((sku, idx) => {
         const raw = rawArr[idx];
-        const w = splitBy === 'qty' ? (raw.qty || 0) : (raw.netSales || 0);
+        const w = splitBy === 'qty' ? (raw.qty||0) : (raw.netSales||0);
         const share = totalW > 0 ? w / totalW : 0;
         const aA = blankOrUndef(sku.ads)        ? adsP    * share : 0;
         const vA = blankOrUndef(sku.visibility) ? visP    * share : 0;
         const pA = blankOrUndef(sku.promos)     ? promosP * share : 0;
         const c  = calcSKU(sku, cfg, isNLC, aA, vA, pA);
         anyData = true;
-        allRows.push({
-          'Portal':             pLabel(portal),
-          'Month':              month,
-          'SKU':                sku.name,
-          'Type':               isNLC ? 'NLC' : (sku.custom ? 'Custom' : 'Regular'),
-          'GMV (Rs)':           +c.gmv.toFixed(2),
-          'Qty':                +c.qty,
-          'Cost/Unit (Rs)':     +(+c.cost || 0).toFixed(2),
-          'Gross Sales (Rs)':   +c.grossSales.toFixed(2),
-          'GST (Rs)':           +c.taxAmt.toFixed(2),
-          'Net Sales (Rs)':     +c.netSales.toFixed(2),
-          'Commission (Rs)':    +c.commission.toFixed(2),
-          'COGS (Rs)':          +c.cogs.toFixed(2),
-          'Direct Exp (Rs)':    +c.directExp.toFixed(2),
-          'Gross Margin (Rs)':  +c.grossMargin.toFixed(2),
-          'Labour (Rs)':        +c.labour.toFixed(2),
-          'Logistics (Rs)':     +c.logistics.toFixed(2),
-          'CM1 (Rs)':           +c.cm1.toFixed(2),
-          'CM1%':               +c.cm1Pct.toFixed(2),
-          'Promos (Rs)':        +c.promos.toFixed(2),
-          'Ads (Rs)':           +c.ads.toFixed(2),
-          'Visibility (Rs)':    +c.vis.toFixed(2),
-          'CM2 (Rs)':           +c.cm2.toFixed(2),
-          'CM2%':               +c.cm2Pct.toFixed(2),
-        });
+        allRows.push(skuRow(portal, month, sku, isNLC, c));
       });
     }
 
     buildSkuRows(regSkus, false, regRaw, regW, pAds, pVis, pPromos);
     buildSkuRows(nlcSkus, true,  nlcRaw, nlcW, nAds, nVis, 0);
 
-    // Grand total row per portal
     const t = totals(regSkus, nlcSkus, cfg, pt, nlcPT);
-    allRows.push({
-      'Portal': pLabel(portal), 'Month': month, 'SKU': '\u25B6 TOTAL', 'Type': '',
-      'GMV (Rs)': +t.gmv.toFixed(2), 'Qty': +t.qty,
-      'Cost/Unit (Rs)': '', 'Gross Sales (Rs)': +t.grossSales.toFixed(2),
-      'GST (Rs)': +t.taxAmt.toFixed(2), 'Net Sales (Rs)': +t.netSales.toFixed(2),
-      'Commission (Rs)': +t.commission.toFixed(2), 'COGS (Rs)': +t.cogs.toFixed(2),
-      'Direct Exp (Rs)': +t.directExp.toFixed(2), 'Gross Margin (Rs)': +t.grossMargin.toFixed(2),
-      'Labour (Rs)': +t.labour.toFixed(2), 'Logistics (Rs)': +t.logistics.toFixed(2),
-      'CM1 (Rs)': +t.cm1.toFixed(2), 'CM1%': +t.cm1Pct.toFixed(2),
-      'Promos (Rs)': +t.promos.toFixed(2), 'Ads (Rs)': +t.ads.toFixed(2),
-      'Visibility (Rs)': +t.vis.toFixed(2), 'CM2 (Rs)': +t.cm2.toFixed(2),
-      'CM2%': +t.cm2Pct.toFixed(2),
-    });
+    allRows.push(totalRow(portal, month, t));
   });
 
   if (!anyData) { toast('No data found for selected month', 'err'); return; }
 
+  // ── Sheet 2: Combined view ────────────────────────────
+  const COMB_COLS = ['Portal','Month','GMV (Rs)','Net Sales (Rs)','Gross Margin (Rs)',
+    'CM1 (Rs)','CM1% Net Sales','CM1% GMV','Promos (Rs)','Ads+Vis (Rs)',
+    'CM2 (Rs)','CM2% Net Sales','CM2% GMV'];
+
+  const combBlank = () => { const r = {}; COMB_COLS.forEach(c => r[c] = ''); return r; };
+
+  const combRows = [];
+  const combAcc = { gmv:0, netSales:0, grossMargin:0, cm1:0, cm2:0, promos:0, ads:0, vis:0 };
+
+  portals.forEach((portal, pi) => {
+    const month = exportMonths[portal];
+    if (!month) return;
+    const e   = S.data[dKey(portal, month)] || {};
+    const cfg = e.config || S.config[portal];
+    const pt  = Object.assign({}, e.portalTotals || {}, { splitBy: S.dashSplit });
+    const nlcPT = Object.assign({}, e.nlcTotals || {}, { splitBy: S.dashSplit });
+    const t = totals(e.skus||[], e.nlcSkus||[], cfg, pt, nlcPT);
+
+    const cm1net = t.netSales > 0 ? t.cm1/t.netSales*100 : 0;
+    const cm1gmv = t.gmv      > 0 ? t.cm1/t.gmv*100      : 0;
+    const cm2net = t.netSales > 0 ? t.cm2/t.netSales*100 : 0;
+    const cm2gmv = t.gmv      > 0 ? t.cm2/t.gmv*100      : 0;
+
+    if (pi > 0) combRows.push(combBlank());
+
+    combRows.push({
+      'Portal':           pLabel(portal),
+      'Month':            month,
+      'GMV (Rs)':         +t.gmv.toFixed(2),
+      'Net Sales (Rs)':   +t.netSales.toFixed(2),
+      'Gross Margin (Rs)':+t.grossMargin.toFixed(2),
+      'CM1 (Rs)':         +t.cm1.toFixed(2),
+      'CM1% Net Sales':   +cm1net.toFixed(2),
+      'CM1% GMV':         +cm1gmv.toFixed(2),
+      'Promos (Rs)':      +t.promos.toFixed(2),
+      'Ads+Vis (Rs)':     +(t.ads + t.vis).toFixed(2),
+      'CM2 (Rs)':         +t.cm2.toFixed(2),
+      'CM2% Net Sales':   +cm2net.toFixed(2),
+      'CM2% GMV':         +cm2gmv.toFixed(2),
+    });
+
+    combAcc.gmv          += t.gmv;
+    combAcc.netSales     += t.netSales;
+    combAcc.grossMargin  += t.grossMargin;
+    combAcc.cm1          += t.cm1;
+    combAcc.cm2          += t.cm2;
+    combAcc.promos       += t.promos;
+    combAcc.ads          += t.ads + t.vis;
+  });
+
+  // Combined grand total
+  const cCM1net = combAcc.netSales > 0 ? combAcc.cm1/combAcc.netSales*100 : 0;
+  const cCM1gmv = combAcc.gmv      > 0 ? combAcc.cm1/combAcc.gmv*100      : 0;
+  const cCM2net = combAcc.netSales > 0 ? combAcc.cm2/combAcc.netSales*100 : 0;
+  const cCM2gmv = combAcc.gmv      > 0 ? combAcc.cm2/combAcc.gmv*100      : 0;
+  combRows.push(combBlank());
+  combRows.push({
+    'Portal':            'ALL PORTALS',
+    'Month':             sel || '',
+    'GMV (Rs)':          +combAcc.gmv.toFixed(2),
+    'Net Sales (Rs)':    +combAcc.netSales.toFixed(2),
+    'Gross Margin (Rs)': +combAcc.grossMargin.toFixed(2),
+    'CM1 (Rs)':          +combAcc.cm1.toFixed(2),
+    'CM1% Net Sales':    +cCM1net.toFixed(2),
+    'CM1% GMV':          +cCM1gmv.toFixed(2),
+    'Promos (Rs)':       +combAcc.promos.toFixed(2),
+    'Ads+Vis (Rs)':      +combAcc.ads.toFixed(2),
+    'CM2 (Rs)':          +combAcc.cm2.toFixed(2),
+    'CM2% Net Sales':    +cCM2net.toFixed(2),
+    'CM2% GMV':          +cCM2gmv.toFixed(2),
+  });
+
   function doExport() {
-    const wb  = XLSX.utils.book_new();
-    const ws  = XLSX.utils.json_to_sheet(allRows);
-    ws['!cols'] = [
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1
+    const ws1 = XLSX.utils.json_to_sheet(allRows, { header: COLS });
+    ws1['!cols'] = [
       {wch:12},{wch:14},{wch:50},{wch:10},
       {wch:14},{wch:8},{wch:14},{wch:16},{wch:12},{wch:16},{wch:16},
       {wch:12},{wch:14},{wch:16},{wch:12},{wch:14},{wch:12},{wch:8},
       {wch:14},{wch:12},{wch:16},{wch:12},{wch:8},
     ];
-    XLSX.utils.book_append_sheet(wb, ws, 'CM2 Data');
+    XLSX.utils.book_append_sheet(wb, ws1, 'SKU Breakdown');
+
+    // Sheet 2
+    const ws2 = XLSX.utils.json_to_sheet(combRows, { header: COMB_COLS });
+    ws2['!cols'] = [
+      {wch:14},{wch:14},{wch:14},{wch:16},{wch:16},
+      {wch:12},{wch:16},{wch:12},{wch:14},{wch:14},
+      {wch:12},{wch:16},{wch:12},
+    ];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Combined View');
+
     const month = allRows[0]?.Month || 'Export';
     XLSX.writeFile(wb, 'Snackible_CM2_' + month.replace(' ', '_') + '.xlsx');
     toast('✅ Excel exported!');
