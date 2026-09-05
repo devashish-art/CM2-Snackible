@@ -323,6 +323,19 @@ function exportAllPortalsCurrentMonth() {
   let anyData = false;
   const exportMonths = {}; // track which month each portal exported
 
+  // Shared config rates (same across all portals)
+  const sharedCfg = S.config[portals[0]];
+  const configHeaderRow = (label, val) => {
+    const r = {}; COLS.forEach(c => r[c] = '');
+    r['Portal'] = 'All Portals'; r['SKU'] = label; r['GMV (Rs)'] = val;
+    return r;
+  };
+  allRows.push(configHeaderRow('── CM2 Calculation Assumptions ──', ''));
+  allRows.push(configHeaderRow('Direct Exp %',  sharedCfg.directExp / 100));
+  allRows.push(configHeaderRow('Labour %',      sharedCfg.labour    / 100));
+  allRows.push(configHeaderRow('Logistics %',   sharedCfg.logistics / 100));
+  allRows.push(blankRow());
+
   portals.forEach((portal, pi) => {
     const months = monthsFor(portal);
     const month = (sel && months.includes(sel)) ? sel
@@ -361,7 +374,10 @@ function exportAllPortalsCurrentMonth() {
         const pA = blankOrUndef(sku.promos)     ? promosP * share : 0;
         const c  = calcSKU(sku, cfg, isNLC, aA, vA, pA);
         anyData = true;
-        allRows.push(skuRow(portal, month, sku, isNLC, c));
+        const row = skuRow(portal, month, sku, isNLC, c);
+        row['CM1%'] = c.cm1Pct / 100;
+        row['CM2%'] = c.cm2Pct / 100;
+        allRows.push(row);
       });
     }
 
@@ -369,7 +385,10 @@ function exportAllPortalsCurrentMonth() {
     buildSkuRows(nlcSkus, true,  nlcRaw, nlcW, nAds, nVis, 0);
 
     const t = totals(regSkus, nlcSkus, cfg, pt, nlcPT);
-    allRows.push(totalRow(portal, month, t));
+    const tr = totalRow(portal, month, t);
+    tr['CM1%'] = t.cm1Pct / 100;
+    tr['CM2%'] = t.cm2Pct / 100;
+    allRows.push(tr);
   });
 
   if (!anyData) { toast('No data found for selected month', 'err'); return; }
@@ -393,10 +412,10 @@ function exportAllPortalsCurrentMonth() {
     const nlcPT = Object.assign({}, e.nlcTotals || {}, { splitBy: S.dashSplit });
     const t = totals(e.skus||[], e.nlcSkus||[], cfg, pt, nlcPT);
 
-    const cm1net = t.netSales > 0 ? t.cm1/t.netSales*100 : 0;
-    const cm1gmv = t.gmv      > 0 ? t.cm1/t.gmv*100      : 0;
-    const cm2net = t.netSales > 0 ? t.cm2/t.netSales*100 : 0;
-    const cm2gmv = t.gmv      > 0 ? t.cm2/t.gmv*100      : 0;
+    const cm1net = t.netSales > 0 ? t.cm1/t.netSales : 0;
+    const cm1gmv = t.gmv      > 0 ? t.cm1/t.gmv      : 0;
+    const cm2net = t.netSales > 0 ? t.cm2/t.netSales : 0;
+    const cm2gmv = t.gmv      > 0 ? t.cm2/t.gmv      : 0;
 
     if (pi > 0) combRows.push(combBlank());
 
@@ -426,10 +445,10 @@ function exportAllPortalsCurrentMonth() {
   });
 
   // Combined grand total
-  const cCM1net = combAcc.netSales > 0 ? combAcc.cm1/combAcc.netSales*100 : 0;
-  const cCM1gmv = combAcc.gmv      > 0 ? combAcc.cm1/combAcc.gmv*100      : 0;
-  const cCM2net = combAcc.netSales > 0 ? combAcc.cm2/combAcc.netSales*100 : 0;
-  const cCM2gmv = combAcc.gmv      > 0 ? combAcc.cm2/combAcc.gmv*100      : 0;
+  const cCM1net = combAcc.netSales > 0 ? combAcc.cm1/combAcc.netSales : 0;
+  const cCM1gmv = combAcc.gmv      > 0 ? combAcc.cm1/combAcc.gmv      : 0;
+  const cCM2net = combAcc.netSales > 0 ? combAcc.cm2/combAcc.netSales : 0;
+  const cCM2gmv = combAcc.gmv      > 0 ? combAcc.cm2/combAcc.gmv      : 0;
   combRows.push(combBlank());
   combRows.push({
     'Portal':            'ALL PORTALS',
@@ -447,6 +466,23 @@ function exportAllPortalsCurrentMonth() {
     'CM2% GMV':          +cCM2gmv.toFixed(2),
   });
 
+  function applyPctFormat(ws, header, pctCols) {
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const colIdx = {};
+    header.forEach((h, i) => { colIdx[h] = i; });
+    pctCols.forEach(colName => {
+      const ci = colIdx[colName];
+      if (ci === undefined) return;
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        const addr = XLSX.utils.encode_cell({ r, c: ci });
+        if (ws[addr] && typeof ws[addr].v === 'number') {
+          ws[addr].z = '0.00%';
+          ws[addr].t = 'n';
+        }
+      }
+    });
+  }
+
   function doExport() {
     const wb = XLSX.utils.book_new();
 
@@ -458,6 +494,21 @@ function exportAllPortalsCurrentMonth() {
       {wch:12},{wch:14},{wch:16},{wch:12},{wch:14},{wch:12},{wch:8},
       {wch:14},{wch:12},{wch:16},{wch:12},{wch:8},
     ];
+    applyPctFormat(ws1, COLS, ['CM1%', 'CM2%']);
+    // Also format the config-rate header rows (value sits in GMV (Rs) col)
+    const pctSummaryLabels = new Set(['Direct Exp %','Labour %','Logistics %']);
+    const skuColIdx = COLS.indexOf('SKU');
+    const gmvColIdx = COLS.indexOf('GMV (Rs)');
+    if (skuColIdx >= 0 && gmvColIdx >= 0) {
+      const r1 = XLSX.utils.decode_range(ws1['!ref'] || 'A1');
+      for (let r = r1.s.r + 1; r <= r1.e.r; r++) {
+        const skuCell = ws1[XLSX.utils.encode_cell({ r, c: skuColIdx })];
+        if (skuCell && pctSummaryLabels.has(skuCell.v)) {
+          const gmvCell = ws1[XLSX.utils.encode_cell({ r, c: gmvColIdx })];
+          if (gmvCell && typeof gmvCell.v === 'number') { gmvCell.z = '0.00%'; gmvCell.t = 'n'; }
+        }
+      }
+    }
     XLSX.utils.book_append_sheet(wb, ws1, 'SKU Breakdown');
 
     // Sheet 2
@@ -467,6 +518,7 @@ function exportAllPortalsCurrentMonth() {
       {wch:12},{wch:16},{wch:12},{wch:14},{wch:14},
       {wch:12},{wch:16},{wch:12},
     ];
+    applyPctFormat(ws2, COMB_COLS, ['CM1% Net Sales','CM1% GMV','CM2% Net Sales','CM2% GMV']);
     XLSX.utils.book_append_sheet(wb, ws2, 'Combined View');
 
     const month = allRows[0]?.Month || 'Export';
