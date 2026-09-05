@@ -477,22 +477,22 @@ function exportAllPortalsCurrentMonth() {
     const wb = XLSX.utils.book_new();
 
     // Sheet 1 — metrics block first (AOA), then headers, then data rows
+    // metricsAoa: rows 0-4 = content, row 5 = blank, row 6 = blank
+    // data starts at row 7 (0-indexed) = Excel row 8
     const metricsAoa = [
       ['CM2 Calculation Metrics'],
       ['Metric', 'Value'],
       ['Direct Exp %', sharedCfg.directExp / 100],
       ['Labour %',     sharedCfg.labour    / 100],
       ['Logistics %',  sharedCfg.logistics  / 100],
-      [],
-      [],
     ];
     const ws1 = XLSX.utils.aoa_to_sheet(metricsAoa);
-    // Apply % format to value cells (col index 1 = B, rows 2-4 = index 2-4)
+    // Apply % format to value cells (col B, rows 3-5)
     ['B3','B4','B5'].forEach(addr => {
       if (ws1[addr]) { ws1[addr].z = '0.00%'; ws1[addr].t = 'n'; }
     });
-    // Append header row + data rows below the metrics block
-    XLSX.utils.sheet_add_json(ws1, allRows, { header: COLS, skipHeader: false, origin: -1 });
+    // Append header + data starting at row 8 (0-indexed row 7), leaving row 6&7 blank
+    XLSX.utils.sheet_add_json(ws1, allRows, { header: COLS, skipHeader: false, origin: { r: 7, c: 0 } });
     ws1['!cols'] = [
       {wch:12},{wch:14},{wch:50},{wch:10},
       {wch:14},{wch:8},{wch:14},{wch:16},{wch:12},{wch:16},{wch:16},
