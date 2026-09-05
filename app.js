@@ -297,12 +297,12 @@ function exportAllPortalsCurrentMonth() {
     'Labour (Rs)':       +c.labour.toFixed(2),
     'Logistics (Rs)':    +c.logistics.toFixed(2),
     'CM1 (Rs)':          +c.cm1.toFixed(2),
-    'CM1%':              +c.cm1Pct.toFixed(2),
+    'CM1%':              c.cm1Pct / 100,
     'Promos (Rs)':       +c.promos.toFixed(2),
     'Ads (Rs)':          +c.ads.toFixed(2),
     'Visibility (Rs)':   +c.vis.toFixed(2),
     'CM2 (Rs)':          +c.cm2.toFixed(2),
-    'CM2%':              +c.cm2Pct.toFixed(2),
+    'CM2%':              c.cm2Pct / 100,
   });
 
   const totalRow = (portal, month, t) => ({
@@ -313,9 +313,9 @@ function exportAllPortalsCurrentMonth() {
     'COGS (Rs)': +t.cogs.toFixed(2), 'Direct Exp (Rs)': +t.directExp.toFixed(2),
     'Gross Margin (Rs)': +t.grossMargin.toFixed(2), 'Labour (Rs)': +t.labour.toFixed(2),
     'Logistics (Rs)': +t.logistics.toFixed(2), 'CM1 (Rs)': +t.cm1.toFixed(2),
-    'CM1%': +t.cm1Pct.toFixed(2), 'Promos (Rs)': +t.promos.toFixed(2),
+    'CM1%': t.cm1Pct / 100, 'Promos (Rs)': +t.promos.toFixed(2),
     'Ads (Rs)': +t.ads.toFixed(2), 'Visibility (Rs)': +t.vis.toFixed(2),
-    'CM2 (Rs)': +t.cm2.toFixed(2), 'CM2%': +t.cm2Pct.toFixed(2),
+    'CM2 (Rs)': +t.cm2.toFixed(2), 'CM2%': t.cm2Pct / 100,
   });
 
   // ── Sheet 1: SKU breakdown ────────────────────────────
@@ -416,13 +416,13 @@ function exportAllPortalsCurrentMonth() {
       'Net Sales (Rs)':   +t.netSales.toFixed(2),
       'Gross Margin (Rs)':+t.grossMargin.toFixed(2),
       'CM1 (Rs)':         +t.cm1.toFixed(2),
-      'CM1% Net Sales':   +cm1net.toFixed(2),
-      'CM1% GMV':         +cm1gmv.toFixed(2),
+      'CM1% Net Sales':   cm1net,
+      'CM1% GMV':         cm1gmv,
       'Promos (Rs)':      +t.promos.toFixed(2),
       'Ads+Vis (Rs)':     +(t.ads + t.vis).toFixed(2),
       'CM2 (Rs)':         +t.cm2.toFixed(2),
-      'CM2% Net Sales':   +cm2net.toFixed(2),
-      'CM2% GMV':         +cm2gmv.toFixed(2),
+      'CM2% Net Sales':   cm2net,
+      'CM2% GMV':         cm2gmv,
     });
 
     combAcc.gmv          += t.gmv;
@@ -447,13 +447,13 @@ function exportAllPortalsCurrentMonth() {
     'Net Sales (Rs)':    +combAcc.netSales.toFixed(2),
     'Gross Margin (Rs)': +combAcc.grossMargin.toFixed(2),
     'CM1 (Rs)':          +combAcc.cm1.toFixed(2),
-    'CM1% Net Sales':    +cCM1net.toFixed(2),
-    'CM1% GMV':          +cCM1gmv.toFixed(2),
+    'CM1% Net Sales':    cCM1net,
+    'CM1% GMV':          cCM1gmv,
     'Promos (Rs)':       +combAcc.promos.toFixed(2),
     'Ads+Vis (Rs)':      +combAcc.ads.toFixed(2),
     'CM2 (Rs)':          +combAcc.cm2.toFixed(2),
-    'CM2% Net Sales':    +cCM2net.toFixed(2),
-    'CM2% GMV':          +cCM2gmv.toFixed(2),
+    'CM2% Net Sales':    cCM2net,
+    'CM2% GMV':          cCM2gmv,
   });
 
   function applyPctFormat(ws, header, pctCols) {
