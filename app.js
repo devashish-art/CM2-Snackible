@@ -325,16 +325,6 @@ function exportAllPortalsCurrentMonth() {
 
   // Shared config rates (same across all portals)
   const sharedCfg = S.config[portals[0]];
-  const configHeaderRow = (label, val) => {
-    const r = {}; COLS.forEach(c => r[c] = '');
-    r['Portal'] = 'All Portals'; r['SKU'] = label; r['GMV (Rs)'] = val;
-    return r;
-  };
-  allRows.push(configHeaderRow('── CM2 Calculation Assumptions ──', ''));
-  allRows.push(configHeaderRow('Direct Exp %',  sharedCfg.directExp / 100));
-  allRows.push(configHeaderRow('Labour %',      sharedCfg.labour    / 100));
-  allRows.push(configHeaderRow('Logistics %',   sharedCfg.logistics / 100));
-  allRows.push(blankRow());
 
   portals.forEach((portal, pi) => {
     const months = monthsFor(portal);
@@ -486,29 +476,30 @@ function exportAllPortalsCurrentMonth() {
   function doExport() {
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1
-    const ws1 = XLSX.utils.json_to_sheet(allRows, { header: COLS });
+    // Sheet 1 — metrics block first (AOA), then headers, then data rows
+    const metricsAoa = [
+      ['CM2 Calculation Metrics', '', ''],
+      ['Metric', '', 'Value'],
+      ['Direct Exp %', '', sharedCfg.directExp / 100],
+      ['Labour %',     '', sharedCfg.labour    / 100],
+      ['Logistics %',  '', sharedCfg.logistics  / 100],
+      [],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet(metricsAoa);
+    // Apply % format to value cells (col index 2 = C, rows 2-4 = index 2-4)
+    ['C3','C4','C5'].forEach(addr => {
+      if (ws1[addr]) { ws1[addr].z = '0.00%'; ws1[addr].t = 'n'; }
+    });
+    // Append header row + data rows below the metrics block
+    XLSX.utils.sheet_add_json(ws1, allRows, { header: COLS, skipHeader: false, origin: -1 });
     ws1['!cols'] = [
       {wch:12},{wch:14},{wch:50},{wch:10},
       {wch:14},{wch:8},{wch:14},{wch:16},{wch:12},{wch:16},{wch:16},
       {wch:12},{wch:14},{wch:16},{wch:12},{wch:14},{wch:12},{wch:8},
       {wch:14},{wch:12},{wch:16},{wch:12},{wch:8},
     ];
+    // Apply % format to CM1%/CM2% columns in data section
     applyPctFormat(ws1, COLS, ['CM1%', 'CM2%']);
-    // Also format the config-rate header rows (value sits in GMV (Rs) col)
-    const pctSummaryLabels = new Set(['Direct Exp %','Labour %','Logistics %']);
-    const skuColIdx = COLS.indexOf('SKU');
-    const gmvColIdx = COLS.indexOf('GMV (Rs)');
-    if (skuColIdx >= 0 && gmvColIdx >= 0) {
-      const r1 = XLSX.utils.decode_range(ws1['!ref'] || 'A1');
-      for (let r = r1.s.r + 1; r <= r1.e.r; r++) {
-        const skuCell = ws1[XLSX.utils.encode_cell({ r, c: skuColIdx })];
-        if (skuCell && pctSummaryLabels.has(skuCell.v)) {
-          const gmvCell = ws1[XLSX.utils.encode_cell({ r, c: gmvColIdx })];
-          if (gmvCell && typeof gmvCell.v === 'number') { gmvCell.z = '0.00%'; gmvCell.t = 'n'; }
-        }
-      }
-    }
     XLSX.utils.book_append_sheet(wb, ws1, 'SKU Breakdown');
 
     // Sheet 2
@@ -522,7 +513,7 @@ function exportAllPortalsCurrentMonth() {
     XLSX.utils.book_append_sheet(wb, ws2, 'Combined View');
 
     const month = allRows[0]?.Month || 'Export';
-    XLSX.writeFile(wb, 'Snackible_CM2_' + month.replace(' ', '_') + '.xlsx');
+    XLSX.writeFile(wb, 'Snackible_CM2_' + month.replace(/ /g, '_') + '.xlsx');
     toast('✅ Excel exported!');
   }
 
