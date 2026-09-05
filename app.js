@@ -483,7 +483,8 @@ function exportAllPortalsCurrentMonth() {
       ['Direct Exp %', '', sharedCfg.directExp / 100],
       ['Labour %',     '', sharedCfg.labour    / 100],
       ['Logistics %',  '', sharedCfg.logistics  / 100],
-      [],
+      ['', '', ''],
+      ['', '', ''],
     ];
     const ws1 = XLSX.utils.aoa_to_sheet(metricsAoa);
     // Apply % format to value cells (col index 2 = C, rows 2-4 = index 2-4)
