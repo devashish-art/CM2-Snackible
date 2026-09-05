@@ -478,17 +478,17 @@ function exportAllPortalsCurrentMonth() {
 
     // Sheet 1 — metrics block first (AOA), then headers, then data rows
     const metricsAoa = [
-      ['CM2 Calculation Metrics', '', ''],
-      ['Metric', '', 'Value'],
-      ['Direct Exp %', '', sharedCfg.directExp / 100],
-      ['Labour %',     '', sharedCfg.labour    / 100],
-      ['Logistics %',  '', sharedCfg.logistics  / 100],
-      ['', '', ''],
-      ['', '', ''],
+      ['CM2 Calculation Metrics'],
+      ['Metric', 'Value'],
+      ['Direct Exp %', sharedCfg.directExp / 100],
+      ['Labour %',     sharedCfg.labour    / 100],
+      ['Logistics %',  sharedCfg.logistics  / 100],
+      [],
+      [],
     ];
     const ws1 = XLSX.utils.aoa_to_sheet(metricsAoa);
-    // Apply % format to value cells (col index 2 = C, rows 2-4 = index 2-4)
-    ['C3','C4','C5'].forEach(addr => {
+    // Apply % format to value cells (col index 1 = B, rows 2-4 = index 2-4)
+    ['B3','B4','B5'].forEach(addr => {
       if (ws1[addr]) { ws1[addr].z = '0.00%'; ws1[addr].t = 'n'; }
     });
     // Append header row + data rows below the metrics block
