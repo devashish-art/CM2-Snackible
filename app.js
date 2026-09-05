@@ -265,6 +265,133 @@ function toast(msg, type) {
   clearTimeout(t._t); t._t=setTimeout(()=>{ t.className='toast'; },2800);
 }
 
+// ── Excel Export ──────────────────────────────────────
+function exportAllPortalsCurrentMonth() {
+  const portals = ['blinkit', 'zepto', 'instamart'];
+  const sel = (S.month && MONTHS.includes(S.month)) ? S.month : null;
+
+  const allRows = [];
+  let anyData = false;
+
+  portals.forEach(portal => {
+    const months = monthsFor(portal);
+    const month = (sel && months.includes(sel)) ? sel
+      : months.length ? months[months.length - 1] : null;
+    if (!month) return;
+
+    const e   = S.data[dKey(portal, month)] || {};
+    const cfg = e.config || S.config[portal];
+    const pt  = Object.assign({}, e.portalTotals || {}, { splitBy: S.dashSplit });
+    const nlcPT = Object.assign({}, e.nlcTotals || {}, { splitBy: S.dashSplit });
+
+    const regSkus = e.skus    || [];
+    const nlcSkus = e.nlcSkus || [];
+
+    function rawWeights(arr, isNLC) {
+      return arr.map(s => {
+        const c = calcSKU(s, cfg, isNLC, 0, 0, 0);
+        return { netSales: c.netSales, qty: c.qty || (+s.qty || 0) };
+      });
+    }
+    const regRaw = rawWeights(regSkus, false);
+    const nlcRaw = rawWeights(nlcSkus, true);
+    const splitBy = S.dashSplit;
+    const regW = splitBy === 'qty'
+      ? regRaw.reduce((a, v) => a + (v.qty || 0), 0)
+      : regRaw.reduce((a, v) => a + (v.netSales || 0), 0);
+    const nlcW = splitBy === 'qty'
+      ? nlcRaw.reduce((a, v) => a + (v.qty || 0), 0)
+      : nlcRaw.reduce((a, v) => a + (v.netSales || 0), 0);
+
+    const pAds = pt.ads || 0, pVis = pt.vis || 0, pPromos = pt.promos || 0;
+    const nAds = nlcPT.ads || 0, nVis = nlcPT.vis || 0;
+
+    function buildSkuRows(arr, isNLC, rawArr, totalW, adsP, visP, promosP) {
+      arr.forEach((sku, idx) => {
+        const raw = rawArr[idx];
+        const w = splitBy === 'qty' ? (raw.qty || 0) : (raw.netSales || 0);
+        const share = totalW > 0 ? w / totalW : 0;
+        const aA = blankOrUndef(sku.ads)        ? adsP    * share : 0;
+        const vA = blankOrUndef(sku.visibility) ? visP    * share : 0;
+        const pA = blankOrUndef(sku.promos)     ? promosP * share : 0;
+        const c  = calcSKU(sku, cfg, isNLC, aA, vA, pA);
+        anyData = true;
+        allRows.push({
+          'Portal':             pLabel(portal),
+          'Month':              month,
+          'SKU':                sku.name,
+          'Type':               isNLC ? 'NLC' : (sku.custom ? 'Custom' : 'Regular'),
+          'GMV (Rs)':           +c.gmv.toFixed(2),
+          'Qty':                +c.qty,
+          'Cost/Unit (Rs)':     +(+c.cost || 0).toFixed(2),
+          'Gross Sales (Rs)':   +c.grossSales.toFixed(2),
+          'GST (Rs)':           +c.taxAmt.toFixed(2),
+          'Net Sales (Rs)':     +c.netSales.toFixed(2),
+          'Commission (Rs)':    +c.commission.toFixed(2),
+          'COGS (Rs)':          +c.cogs.toFixed(2),
+          'Direct Exp (Rs)':    +c.directExp.toFixed(2),
+          'Gross Margin (Rs)':  +c.grossMargin.toFixed(2),
+          'Labour (Rs)':        +c.labour.toFixed(2),
+          'Logistics (Rs)':     +c.logistics.toFixed(2),
+          'CM1 (Rs)':           +c.cm1.toFixed(2),
+          'CM1%':               +c.cm1Pct.toFixed(2),
+          'Promos (Rs)':        +c.promos.toFixed(2),
+          'Ads (Rs)':           +c.ads.toFixed(2),
+          'Visibility (Rs)':    +c.vis.toFixed(2),
+          'CM2 (Rs)':           +c.cm2.toFixed(2),
+          'CM2%':               +c.cm2Pct.toFixed(2),
+        });
+      });
+    }
+
+    buildSkuRows(regSkus, false, regRaw, regW, pAds, pVis, pPromos);
+    buildSkuRows(nlcSkus, true,  nlcRaw, nlcW, nAds, nVis, 0);
+
+    // Grand total row per portal
+    const t = totals(regSkus, nlcSkus, cfg, pt, nlcPT);
+    allRows.push({
+      'Portal': pLabel(portal), 'Month': month, 'SKU': '\u25B6 TOTAL', 'Type': '',
+      'GMV (Rs)': +t.gmv.toFixed(2), 'Qty': +t.qty,
+      'Cost/Unit (Rs)': '', 'Gross Sales (Rs)': +t.grossSales.toFixed(2),
+      'GST (Rs)': +t.taxAmt.toFixed(2), 'Net Sales (Rs)': +t.netSales.toFixed(2),
+      'Commission (Rs)': +t.commission.toFixed(2), 'COGS (Rs)': +t.cogs.toFixed(2),
+      'Direct Exp (Rs)': +t.directExp.toFixed(2), 'Gross Margin (Rs)': +t.grossMargin.toFixed(2),
+      'Labour (Rs)': +t.labour.toFixed(2), 'Logistics (Rs)': +t.logistics.toFixed(2),
+      'CM1 (Rs)': +t.cm1.toFixed(2), 'CM1%': +t.cm1Pct.toFixed(2),
+      'Promos (Rs)': +t.promos.toFixed(2), 'Ads (Rs)': +t.ads.toFixed(2),
+      'Visibility (Rs)': +t.vis.toFixed(2), 'CM2 (Rs)': +t.cm2.toFixed(2),
+      'CM2%': +t.cm2Pct.toFixed(2),
+    });
+  });
+
+  if (!anyData) { toast('No data found for selected month', 'err'); return; }
+
+  function doExport() {
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.json_to_sheet(allRows);
+    ws['!cols'] = [
+      {wch:12},{wch:14},{wch:50},{wch:10},
+      {wch:14},{wch:8},{wch:14},{wch:16},{wch:12},{wch:16},{wch:16},
+      {wch:12},{wch:14},{wch:16},{wch:12},{wch:14},{wch:12},{wch:8},
+      {wch:14},{wch:12},{wch:16},{wch:12},{wch:8},
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'CM2 Data');
+    const month = allRows[0]?.Month || 'Export';
+    XLSX.writeFile(wb, 'Snackible_CM2_' + month.replace(' ', '_') + '.xlsx');
+    toast('✅ Excel exported!');
+  }
+
+  if (typeof XLSX !== 'undefined') {
+    doExport();
+  } else {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = doExport;
+    s.onerror = () => toast('Failed to load XLSX library', 'err');
+    document.head.appendChild(s);
+  }
+}
+
 // ── Sidebar ───────────────────────────────────────────
 function sidebar() {
   const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')"><span class="nav-icon">'+ic+'</span><span>'+lb+'</span></div>';
@@ -467,7 +594,9 @@ function viewDashboard() {
     +'</div>';
   const msel='<select class="msel" onchange="S.month=this.value;render()">'+months.map(m=>'<option value="'+m+'"'+(m===sel?' selected':'')+'>'+m+'</option>').join('')+'</select>';
 
-  return '<div class="ph"><div><div class="ph-title">Dashboard</div><div class="ph-sub">'+pLabel(S.portal)+' · '+sel+'</div></div><div class="ph-right" style="gap:8px">'+pBadge(S.portal)+' '+splitToggle+' '+msel+(isAdmin?'<button class="btn btn-yellow" onclick="go(\'entry\')">+ New Month</button>':'')+'</div></div>'
+  return '<div class="ph"><div><div class="ph-title">Dashboard</div><div class="ph-sub">'+pLabel(S.portal)+' · '+sel+'</div></div><div class="ph-right" style="gap:8px">'+pBadge(S.portal)+' '+splitToggle+' '+msel+(isAdmin?'<button class="btn btn-yellow" onclick="go(\'entry\')">+ New Month</button>':'')
++'<button class="btn btn-outline btn-sm" onclick="exportAllPortalsCurrentMonth()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button>'
++'</div></div>'
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val">₹'+fmt(t.gmv)+'</div><div class="sub">'+(mom?delta(mom.gmv,'%'):'—')+'</div><div class="abar" style="background:'+pColor(S.portal)+'"></div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(t.netSales)+'</div><div class="sub">After '+cfg.commission+'% comm + '+cfg.tax+'% GST</div><div class="abar" style="background:var(--mint)"></div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(t.cm1Pct)+'">₹'+fmt(t.cm1)+'</div><div class="sub">'+fmtPct(t.cm1Pct)+' of Net Sales '+(mom?delta(mom.cm1Pct):'')+'</div><div class="abar" style="background:var(--blue)"></div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(t.cm2Pct)+'">₹'+fmt(t.cm2)+'</div><div class="sub">'+fmtPct(t.cm2Pct)+' of Net Sales '+(mom?delta(mom.cm2Pct):'')+'</div><div class="abar" style="background:'+(t.cm2Pct>=0?'var(--pos)':'var(--neg)')+'"></div></div></div>'
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Commission</div><div class="val warn">₹'+fmt(t.commission)+'</div><div class="sub">'+cfg.commission+'% of GMV</div></div><div class="card stat"><div class="lbl">Gross Margin</div><div class="val">₹'+fmt(t.grossMargin)+'</div><div class="sub">After COGS + Direct Exp</div></div><div class="card stat"><div class="lbl">Promos</div><div class="val warn">₹'+fmt(t.promos)+'</div><div class="sub">'+fmtPct(t.promosPct)+' of GMV</div></div><div class="card stat"><div class="lbl">Ads + Visibility</div><div class="val warn">₹'+fmt(t.ads+t.vis)+'</div><div class="sub">Marketing</div></div></div>'
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis)
