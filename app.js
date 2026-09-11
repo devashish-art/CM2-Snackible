@@ -195,8 +195,8 @@ function totals(skus, nlcSkus, cfg, portalTotals, nlcPortalTotals) {
                 cogs:0,directExp:0,grossMargin:0,labour:0,logistics:0,
                 cm1:0,promos:0,ads:0,vis:0,cm2:0 };
 
-  const splitBy = portalTotals?.splitBy || 'netSales';
   const nlcPT   = nlcPortalTotals || portalTotals || {};
+  const splitBy = portalTotals?.splitBy || nlcPT?.splitBy || 'netSales';
 
   // Helper to process a set of SKUs with their own portal totals
   function processGroup(skuArr, isNLC, groupPT) {
@@ -703,7 +703,7 @@ function viewDashboard() {
   }).join('');
 
   // NLC subtotal
-  const tNlc = dNlcSkus.length > 0 ? totals([], e.nlcSkus||[], cfg, null, nlcPT) : null;
+  const tNlc = dNlcSkus.length > 0 ? totals([], e.nlcSkus||[], cfg, nlcPT, nlcPT) : null;
   const nlcSubtotal = tNlc ? '<tr class="gt" style="background:#DCEEFF">'
     +'<td>NLC Subtotal</td>'
     +'<td class="r"><span style="color:var(--tx3)">'+fmt(tNlc.gmv)+' <small>ref</small></span></td>'
