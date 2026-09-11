@@ -209,7 +209,7 @@ function totals(skus, nlcSkus, cfg, portalTotals, nlcPortalTotals) {
       : rawVals.reduce((a,v)=>a+(v.netSales||0),0);
     const pAds    = groupPT?.ads    || 0;
     const pVis    = groupPT?.vis    || 0;
-    const pPromos = isNLC ? 0 : (groupPT?.promos || 0);
+    const pPromos = groupPT?.promos || 0;
 
     skuArr.forEach((s,idx)=>{
       const w = splitBy === 'qty' ? (rawVals[idx].qty||0) : (rawVals[idx].netSales||0);
@@ -349,7 +349,7 @@ function exportAllPortalsCurrentMonth() {
     const regW = splitBy === 'qty' ? regRaw.reduce((a,v)=>a+(v.qty||0),0) : regRaw.reduce((a,v)=>a+(v.netSales||0),0);
     const nlcW = splitBy === 'qty' ? nlcRaw.reduce((a,v)=>a+(v.qty||0),0) : nlcRaw.reduce((a,v)=>a+(v.netSales||0),0);
     const pAds = pt.ads||0, pVis = pt.vis||0, pPromos = pt.promos||0;
-    const nAds = nlcPT.ads||0, nVis = nlcPT.vis||0;
+    const nAds = nlcPT.ads||0, nVis = nlcPT.vis||0, nPromos = nlcPT.promos||0;
 
     // blank row before each portal (except first)
     if (pi > 0) allRows.push(blankRow());
@@ -372,7 +372,7 @@ function exportAllPortalsCurrentMonth() {
     }
 
     buildSkuRows(regSkus, false, regRaw, regW, pAds, pVis, pPromos);
-    buildSkuRows(nlcSkus, true,  nlcRaw, nlcW, nAds, nVis, 0);
+    buildSkuRows(nlcSkus, true,  nlcRaw, nlcW, nAds, nVis, nPromos);
 
     const t = totals(regSkus, nlcSkus, cfg, pt, nlcPT);
     const tr = totalRow(portal, month, t);
@@ -546,7 +546,7 @@ function skuLeaders(dAllSkus, cfg, dRawVals, regTotalW, nlcTotalW, pAds, pVis, p
     const share = totalW > 0 ? w/totalW : 0;
     const aA = blankOrUndef(sku.ads)        ? (isNLC?nAds:pAds)*share : 0;
     const vA = blankOrUndef(sku.visibility) ? (isNLC?nVis:pVis)*share : 0;
-    const pA = blankOrUndef(sku.promos)     ? (isNLC?0:pPromos)*share : 0;
+    const pA = blankOrUndef(sku.promos)     ? (isNLC?nPromos:pPromos)*share : 0;
     const c  = calcSKU(sku, cfg, isNLC, aA, vA, pA);
     return { name: shortN(sku.name), gmv: c.gmv, netSales: c.netSales, cm2: c.cm2, cm2Pct: c.cm2Pct, isNLC };
   }).filter(x => x.gmv > 0 || x.netSales > 0);
@@ -611,7 +611,7 @@ function viewDashboard() {
   const nlcTotalW=splitBy==='qty'?dNlcRaw.reduce((a,v)=>a+(v.qty||0),0):dNlcRaw.reduce((a,v)=>a+(v.netSales||0),0);
 
   const pAds=pt.ads||0, pVis=pt.vis||0, pPromos=pt.promos||0;
-  const nAds=nlcPT.ads||0, nVis=nlcPT.vis||0;
+  const nAds=nlcPT.ads||0, nVis=nlcPT.vis||0, nPromos=nlcPT.promos||0;
 
   // For skuLeaders we still need a combined dTotalW (used only for display ranking, not CM calc)
   const dTotalW=dRawVals.reduce((a,v)=>a+(splitBy==='qty'?v.qty||0:v.netSales||0),0);
@@ -678,7 +678,8 @@ function viewDashboard() {
     const share=nlcTotalW>0?w/nlcTotalW:0;
     const aA=blankOrUndef(sku.ads)        ? nAds*share : 0;
     const vA=blankOrUndef(sku.visibility) ? nVis*share : 0;
-    const c=calcSKU(sku,cfg,true,aA,vA,0);
+    const pA=blankOrUndef(sku.promos)     ? nPromos*share : 0;
+    const c=calcSKU(sku,cfg,true,aA,vA,pA);
     return '<tr style="background:#F0F7FF">'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+sku.name+'"><span class="ntag">NLC</span> '+shortN(sku.name)+'</td>'
       +'<td class="r"><span style="color:var(--tx3)">'+fmt(c.gmv)+' <small>ref</small></span></td>'
@@ -693,7 +694,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.logistics)+'</td>'
       +'<td class="r">₹'+fmt(c.cm1)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm1Pct)+'">'+fmtPct(c.cm1Pct)+'</span></td>'
-      +'<td class="r">₹0</td>'
+      +'<td class="r">₹'+fmt(c.promos)+'</td>'
       +'<td class="r">₹'+fmt(c.ads)+'</td>'
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
@@ -717,7 +718,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tNlc.logistics)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.cm1)+'</td>'
     +'<td class="c"><span class="pill '+pc(tNlc.cm1Pct)+'">'+fmtPct(tNlc.cm1Pct)+'</span></td>'
-    +'<td class="r">₹0</td>'
+    +'<td class="r">₹'+fmt(tNlc.promos)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.ads)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.vis)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.cm2)+'</td>'
@@ -776,7 +777,7 @@ function initES() {
       c_gross: s.c_gross||'',
       c_net: s.c_net||'',
     }));
-    ES.nlcSkus      = JSON.parse(JSON.stringify(ex.nlcSkus||[])).map(s=>({...s, promos:''}));
+    ES.nlcSkus      = JSON.parse(JSON.stringify(ex.nlcSkus||[])).map(s=>({...s, promos:(s.promos===0||s.promos===null||s.promos===undefined)?'':s.promos}));
     ES.portalTotals = JSON.parse(JSON.stringify(ex.portalTotals ||{ads:'',vis:'',promos:'',splitBy:'netSales'}));
     ES.nlcTotals    = JSON.parse(JSON.stringify(ex.nlcTotals    ||{ads:'',vis:''}));
     ES.month        = S.month;
@@ -860,6 +861,7 @@ function viewEntry() {
     +'<div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.05em;width:100%;margin-bottom:4px">NLC Portal-Level Spends (auto-split by '+((ES.portalTotals.splitBy||'netSales')==='qty'?'Qty Sold':'Net Sales')+' share)</div>'
     +'<div class="cfg-item"><label>NLC Ads (₹)</label><input type="number" value="'+(ES.nlcTotals.ads||'')+'" placeholder="0" oninput="updateNLCT(\'ads\',this.value)"></div>'
     +'<div class="cfg-item"><label>NLC Visibility (₹)</label><input type="number" value="'+(ES.nlcTotals.vis||'')+'" placeholder="0" oninput="updateNLCT(\'vis\',this.value)"></div>'
+    +'<div class="cfg-item"><label>NLC Promos (₹)</label><input type="number" value="'+(ES.nlcTotals.promos||'')+'" placeholder="0" oninput="updateNLCT(\'promos\',this.value)"></div>'
     +'</div>'
     +'<div class="twrap"><table id="nlc-tbl"><thead><tr>'
     +'<th style="min-width:220px">SKU</th>'
@@ -970,7 +972,7 @@ function nlcRow(sku,i,cfg){
   const share=totalWeight>0?myWeight/totalWeight:0;
   const adsAlloc   =blankOrUndef(sku.ads)       ? (+ES.nlcTotals.ads||0)*share : 0;
   const visAlloc   =blankOrUndef(sku.visibility)? (+ES.nlcTotals.vis||0)*share : 0;
-  const proAlloc   = 0; // NLC promos always 0
+  const proAlloc   =blankOrUndef(sku.promos)    ? (+ES.nlcTotals.promos||0)*share : 0;
   const c=calcSKU(sku,cfg,true,adsAlloc,visAlloc,proAlloc);
   const opts=['<option value="">-- Select NLC SKU --</option>',...NLC_SKUS.map(n=>'<option value="'+n+'"'+(n===sku.name?' selected':'')+'>'+n+'</option>')].join('');
   // If name not in NLC_SKUS list (imported), add it as a selected option
@@ -1085,8 +1087,8 @@ function refreshCombinedTotal(){
   const netSales = reg.netSales + nlc.netSales;
   const cm1      = reg.cm1      + nlc.cm1;
 
-  // Promos: regular SKUs only (NLC promos always 0)
-  const promos   = reg.promos;
+  // Promos: regular + NLC
+  const promos   = reg.promos + nlc.promos;
 
   // Ads + Visibility: both groups
   const ads      = reg.ads + nlc.ads;
@@ -1104,7 +1106,7 @@ function refreshCombinedTotal(){
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">Net Sales</div><div style="font-size:16px;font-weight:700">₹'+fmt(netSales)+'</div></div>'
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">CM1 ₹</div><div style="font-size:16px;font-weight:700;color:var(--blue)">₹'+fmt(cm1)+'</div></div>'
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">CM1%</div><div style="font-size:16px;font-weight:700;color:var(--blue)">'+fmtPct(cm1Pct)+'</div></div>'
-    +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">Promos (Reg)</div><div style="font-size:16px;font-weight:700;color:var(--warn)">₹'+fmt(promos)+'</div></div>'
+    +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">Promos (Reg+NLC)</div><div style="font-size:16px;font-weight:700;color:var(--warn)">₹'+fmt(promos)+'</div></div>'
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">Ads+Vis (Reg+NLC)</div><div style="font-size:16px;font-weight:700;color:var(--warn)">₹'+fmt(ads+vis)+'</div></div>'
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">CM2 ₹</div><div style="font-size:16px;font-weight:700;color:'+(cm2>=0?'var(--pos)':'var(--neg)')+'">₹'+fmt(cm2)+'</div></div>'
     +'<div><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.04em">CM2%</div><div style="font-size:16px;font-weight:700;color:'+(cm2Pct>=0?'var(--pos)':'var(--neg)')+'">'+fmtPct(cm2Pct)+'</div></div>'
@@ -1237,14 +1239,14 @@ async function importFromSheet() {
         existing.cost       = r.cost       || existing.cost;
         if (isNLC) existing.nlc_price = r.nlc_price;
         // Only set if explicitly non-zero in sheet; leave blank otherwise so portal allocation kicks in
-        if (r.promos > 0 && !isNLC) existing.promos     = r.promos; else if(isNLC) existing.promos = '';
+        if (r.promos > 0) existing.promos = r.promos;
         if (r.ads > 0)              existing.ads        = r.ads;
         if (r.visibility > 0)       existing.visibility = r.visibility;
       } else {
         targetArr.push({
           name: r.name, gmv: r.gmv||'', qty: r.qty||'', cost: r.cost||'',
           nlc_price: r.nlc_price||'',
-          promos: (r.promos > 0 && !isNLC) ? r.promos : '',
+          promos: r.promos > 0 ? r.promos : '',
           ads: r.ads > 0 ? r.ads : '',
           visibility: r.visibility > 0 ? r.visibility : ''
         });
@@ -1277,7 +1279,7 @@ function saveEntry(){
   }));
   const vn=ES.nlcSkus.filter(s=>s.name&&(+s.qty>0||+s.nlc_price>0)).map(s=>({
     ...s,
-    promos: '',
+    promos: normalizeSpend(s.promos),
     ads: normalizeSpend(s.ads),
     visibility: normalizeSpend(s.visibility)
   }));
