@@ -1061,9 +1061,9 @@ function refreshNlcFoot(){
     +'<td class="r">₹'+fmt(t.logistics)+'</td>'
     +'<td class="r">₹'+fmt(t.cm1)+'</td>'
     +'<td class="r"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td>'
-    +'<td class="r">₹0</td>'
-    +'<td class="r">₹'+fmt(t.ads)+'</td>'
-    +'<td class="r">₹'+fmt(t.vis)+'</td>'
+    +'<td class="r">'+(t.promos>0?'₹'+fmt(t.promos):'0')+'</td>'
+    +'<td class="r">'+(t.ads>0?'₹'+fmt(t.ads):'0')+'</td>'
+    +'<td class="r">'+(t.vis>0?'₹'+fmt(t.vis):'0')+'</td>'
     +'<td class="r">₹'+fmt(t.cm2)+'</td>'
     +'<td class="r"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
     +'<td></td></tr>';
