@@ -718,7 +718,7 @@ function kpiCards(t,sel){
   const amt=(h,f)=>({h:h,type:'amt',val:f});
   const pct=(h,n,d)=>({h:h,type:'pct',num:n,den:d});
   const NS=x=>x.netSales, GMV=x=>x.gmv;
-  const card=(lbl,val,cls,cols,cost,bar)=>'<div class="card stat"><div class="lbl">'+lbl+'</div><div class="val '+(cls||'')+'">₹'+fmt(val)+'</div>'+grid(cols,cost)+(bar?'<div class="abar" style="background:'+bar+'"></div>':'')+'</div>';
+  const card=(lbl,val,cls,cols,cost,bar)=>'<div class="card stat"><div class="lbl">'+lbl+'</div><div class="val '+(cls||'')+'">₹'+fmt(val)+'</div>'+grid(cols,cost)+'</div>';
   const adsVis=x=>x.ads+x.vis;
 
   return '<div class="g4 mb20">'
