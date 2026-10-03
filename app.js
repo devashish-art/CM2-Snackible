@@ -707,6 +707,15 @@ function sumTotals(list){
 }
 // Top 4 KPI cards for Combined view (single month: prev month + 3M avg; range: prev equal period)
 function combKpiCards(comb,selMonths,mode){
+  if(mode!=='single'){
+    // Range mode: original simple cards (no detail grid)
+    const c1=comb.netSales>0?comb.cm1/comb.netSales*100:0, c2=comb.netSales>0?comb.cm2/comb.netSales*100:0;
+    const g1=comb.gmv>0?comb.cm1/comb.gmv*100:0, g2=comb.gmv>0?comb.cm2/comb.gmv*100:0;
+    return '<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val pos">₹'+fmt(comb.gmv)+'</div></div>'
+      +'<div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(comb.netSales)+'</div></div>'
+      +'<div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(c1)+'">₹'+fmt(comb.cm1)+'</div><div class="sub">'+fmtPct(c1)+' Net Sales · '+fmtPct(g1)+' GMV</div></div>'
+      +'<div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(c2)+'">₹'+fmt(comb.cm2)+'</div><div class="sub">'+fmtPct(c2)+' Net Sales · '+fmtPct(g2)+' GMV</div></div></div>';
+  }
   const firstIdx=MONTHS.indexOf(selMonths[0]);
   const len=selMonths.length;
   let prev=null, prevLbl='Prev', agg=null, hideAgg=false;
