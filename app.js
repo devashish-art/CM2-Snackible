@@ -2156,27 +2156,41 @@ function ueNormPack(v){
 let UE_MAP=null, UE_MAP_LOADING=false, UE_MAP_ERR=false;
 function ueLoadMap(force){
   if(UE_MAP_LOADING||(UE_MAP&&!force)) return;
+  if(force) toast('Reloading SKU_Map…');
   UE_MAP_LOADING=true; UE_MAP_ERR=false;
   fetch(SHEET_IMPORT_URL+'?action=getSkuMap',{cache:'no-store'})
     .then(r=>r.json())
     .then(r=>{
-      const m={};
+      const exact={}, base={}; let n=0;
       (r.rows||[]).forEach(x=>{
-        const name=String(x.name||'').trim().toLowerCase(); const master=String(x.master||'').trim();
-        if(!name||!master) return;
+        const master=String(x.master||'').trim(); if(!x.name||!master) return;
         const val={master:master,pack:ueNormPack(x.pack)};
-        const pt=String(x.portal||'').trim().toLowerCase().replace(/\s*nlc$/,'');
-        m[(pt||'*')+'|'+name]=val; if(!m['*|'+name]) m['*|'+name]=val;
+        const pt=String(x.portal||'').trim().toLowerCase().replace(/\s*nlc$/,'')||'*';
+        const nn=ueNorm(x.name), bb=ueBase(x.name);
+        exact[pt+'|'+nn]=val; if(!exact['*|'+nn]) exact['*|'+nn]=val;
+        (base[pt+'|'+bb]=base[pt+'|'+bb]||[]).push(val);
+        n++;
       });
-      UE_MAP=m;
+      UE_MAP={exact:exact,base:base,n:n};
+      if(force) toast('SKU_Map reloaded · '+n+' rows');
     })
     .catch(()=>{ UE_MAP={}; UE_MAP_ERR=true; })
     .finally(()=>{ UE_MAP_LOADING=false; if(S.view==='unit') render(); });
 }
+// Name normalisers: case, punctuation and spacing never matter; ueBase also drops pack size
+function ueNorm(n){ return String(n||'').toLowerCase().replace(/[^a-z0-9.]+/g,' ').replace(/\s+/g,' ').trim(); }
+function ueBase(n){ return ueNorm(String(n||'').toLowerCase().replace(/\d+(?:\.\d+)?\s*(g|gm|gms|gram|grams|piece|pieces|pc|pcs)\b/g,' ')); }
+// 1) exact name  2) same name ignoring pack text, accepted only if pack sizes agree (±15%)
 function ueMapLookup(p,name){
-  if(!UE_MAP) return null;
-  const n=String(name||'').trim().toLowerCase();
-  return UE_MAP[p+'|'+n]||UE_MAP['*|'+n]||null;
+  if(!UE_MAP||!UE_MAP.exact) return null;
+  const nn=ueNorm(name);
+  const hit=UE_MAP.exact[p+'|'+nn]||UE_MAP.exact['*|'+nn]; if(hit) return hit;
+  const list=UE_MAP.base[p+'|'+ueBase(name)]||UE_MAP.base['*|'+ueBase(name)];
+  if(!list||!list.length) return null;
+  const g=parseFloat(ueGrams(name))||0;
+  const ok=list.filter(v=>{ const pk=parseFloat(v.pack)||0; return !g||!pk||Math.abs(g-pk)/pk<=0.15; });
+  if(!ok.length) return null;
+  return ok.find(v=>(parseFloat(v.pack)||0)===g)||ok[0];
 }
 function ueCopyUnmapped(){
   const t=(window.UE_UNMAPPED||[]).map(x=>x.join('\t')).join('\n');
