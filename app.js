@@ -103,6 +103,7 @@ const S = {
   combineTo:   null,
   sideCollapsed: false,
   showPromoPct: false,
+  showPct: false,
 };
 
 async function save(explicitKey) {
@@ -605,6 +606,17 @@ function pctRows(t){
   };
   return mk('% of GMV',gmvMap)+mk('% of Net Sales',nsMap);
 }
+// Expand button row placed right below Grand Total; it also expands subtotal % rows
+function pctToggleRow(){
+  let cells='<td><button id="pct-btn" class="pct-btn" onclick="togglePct()">'+(S.showPct?'▴ Hide %':'▾ Show %')+'</button></td>';
+  for(let i=1;i<18;i++) cells+='<td></td>';
+  return '<tr class="pct-toggle">'+cells+'</tr>';
+}
+function togglePct(){
+  S.showPct=!S.showPct;
+  const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-pct',S.showPct);
+  const b=document.getElementById('pct-btn'); if(b) b.textContent=S.showPct?'▴ Hide %':'▾ Show %';
+}
 function togglePromoPct(){
   S.showPromoPct=!S.showPromoPct;
   const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-promo',S.showPromoPct);
@@ -775,11 +787,11 @@ function viewDashboard() {
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val">₹'+fmt(t.gmv)+'</div><div class="sub">'+(mom?delta(mom.gmv,'%'):'—')+'</div><div class="abar" style="background:'+pColor(S.portal)+'"></div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(t.netSales)+'</div><div class="sub">After '+cfg.commission+'% comm + '+cfg.tax+'% GST</div><div class="abar" style="background:var(--mint)"></div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(t.cm1Pct)+'">₹'+fmt(t.cm1)+'</div><div class="sub">'+fmtPct(t.cm1Pct)+' of Net Sales '+(mom?delta(mom.cm1Pct):'')+'</div><div class="abar" style="background:var(--blue)"></div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(t.cm2Pct)+'">₹'+fmt(t.cm2)+'</div><div class="sub">'+fmtPct(t.cm2Pct)+' of Net Sales '+(mom?delta(mom.cm2Pct):'')+'</div><div class="abar" style="background:'+(t.cm2Pct>=0?'var(--pos)':'var(--neg)')+'"></div></div></div>'
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Commission</div><div class="val warn">₹'+fmt(t.commission)+'</div><div class="sub">'+cfg.commission+'% of GMV</div></div><div class="card stat"><div class="lbl">Gross Margin</div><div class="val">₹'+fmt(t.grossMargin)+'</div><div class="sub">After COGS + Direct Exp</div></div><div class="card stat"><div class="lbl">Promos</div><div class="val warn">₹'+fmt(t.promos)+'</div><div class="sub">'+fmtPct(t.promosPct)+' of GMV</div></div><div class="card stat"><div class="lbl">Ads + Visibility</div><div class="val warn">₹'+fmt(t.ads+t.vis)+'</div><div class="sub">Marketing</div></div></div>'
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button></div></div><div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+'"><thead><tr>'
+  +'<div class="card tcard"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button></div></div><div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
-  +'</tr>'+pctRows(t)+'</tbody></table></div>'
+  +'</tr>'+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
   // ── Saved metrics bar ──────────────────────────────
   +'<div style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
   +'<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Saved Metrics (% of Net Sales)</div>'
@@ -2089,6 +2101,11 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl .ps-val{white-space:nowrap}
   .dash-tbl .ps-val span{display:inline-block;background:#FFF4E5;color:#9A5B00;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:600}
   .dash-tbl .ps-val small{font-weight:500;opacity:.8}
+  .dash-tbl tr.pct-row{display:none}
+  .dash-tbl.show-pct tr.pct-row{display:table-row}
+  .dash-tbl tr.pct-toggle td{padding-top:6px!important;padding-bottom:6px!important;background:#fff;border-bottom:none}
+  .dash-tbl .pct-btn{background:#fff;border:1.5px solid var(--green);color:var(--green);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:Poppins,sans-serif}
+  .dash-tbl .pct-btn:hover{background:#EEF6F5}
   .dash-tbl tr.pct-row td{padding-top:7px!important;padding-bottom:7px!important;font-size:11px;font-weight:600;color:var(--green);background:#F7FBFA}
   .dash-tbl tr.pct-row td:first-child{background:#F7FBFA;color:var(--tx3)}
   `;
