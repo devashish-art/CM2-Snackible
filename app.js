@@ -2125,6 +2125,10 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .sidebar.collapsed .portal-chips{display:flex;flex-direction:column;gap:6px}
   .sidebar.collapsed .pchip{text-align:center;padding-left:0;padding-right:0}
   .dash-tbl th,.dash-tbl td{padding:13px 16px!important}
+  .dash-tbl td{font-size:14px!important}
+  .dash-tbl th{font-size:11.5px!important}
+  .dash-tbl .pill{font-size:12.5px!important;padding:3px 9px}
+  .dash-tbl small{font-size:12px}
   .dash-tbl th:first-child,.dash-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 #D9E3E2}
   .dash-tbl thead th{position:sticky;top:0;z-index:4;background:#F3F8F7;box-shadow:inset 0 -1px 0 #D9E3E2}
   .dash-tbl thead th:first-child{z-index:5;left:0;background:#F3F8F7;box-shadow:inset -1px -1px 0 #D9E3E2}
@@ -2153,7 +2157,7 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl td.nlc-ref{background:#E4E9F0!important;color:#64748B;font-style:italic}
   .dash-tbl tr.promo-sub{display:none}
   .dash-tbl.show-promo tr.promo-sub{display:table-row}
-  .dash-tbl tr.promo-sub td{padding-top:4px!important;padding-bottom:8px!important;background:#FAFCFC;border-top:none;font-size:11px;color:var(--tx3)}
+  .dash-tbl tr.promo-sub td{padding-top:4px!important;padding-bottom:8px!important;background:#FAFCFC;border-top:none;font-size:12.5px!important;color:var(--tx3)}
   .dash-tbl tr.promo-sub td:first-child{background:#FAFCFC;font-style:italic;padding-left:28px!important}
   .dash-tbl .ps-val{white-space:nowrap}
   .dash-tbl .ps-val span{display:inline-block;background:#FFF4E5;color:#9A5B00;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:600}
@@ -2161,9 +2165,9 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl tr.pct-row{display:none}
   .dash-tbl.show-pct tr.pct-row{display:table-row}
   .dash-tbl tr.pct-toggle td{padding-top:6px!important;padding-bottom:6px!important;background:#fff;border-bottom:none}
-  .dash-tbl .pct-btn{background:#fff;border:1.5px solid var(--green);color:var(--green);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:Poppins,sans-serif}
+  .dash-tbl .pct-btn{background:#fff;border:1.5px solid var(--green);color:var(--green);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:Poppins,sans-serif}
   .dash-tbl .pct-btn:hover{background:#EEF6F5}
-  .dash-tbl tr.pct-row td{padding-top:7px!important;padding-bottom:7px!important;font-size:11px;font-weight:600;color:var(--green);background:#F7FBFA}
+  .dash-tbl tr.pct-row td{padding-top:8px!important;padding-bottom:8px!important;font-size:13px!important;font-weight:600;color:var(--green);background:#F7FBFA}
   .dash-tbl tr.pct-row td:first-child{background:#F7FBFA;color:var(--tx3)}
   `;
   document.head.appendChild(st);
