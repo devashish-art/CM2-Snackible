@@ -2143,6 +2143,48 @@ function ueDisplay(name){
   return n.trim().replace(/\b\w/g,c=>c.toUpperCase());
 }
 
+// Pack size from a portal name: "57 g", "57.0 GRAM", "-55 g" → "57g"
+function ueGrams(name){
+  const m=(name||'').match(/(\d+(?:\.\d+)?)\s*(g|gm|gms|gram|grams)\b/i);
+  return m?Math.round(parseFloat(m[1]))+'g':'';
+}
+function ueNormPack(v){
+  const t=String(v||'').trim(); if(!t) return '';
+  const m=t.match(/(\d+(?:\.\d+)?)/); return m?Math.round(parseFloat(m[1]))+'g':t;
+}
+// SKU_Map tab from Google Sheet: Portal | Portal SKU Name | Master SKU | Pack Size
+let UE_MAP=null, UE_MAP_LOADING=false, UE_MAP_ERR=false;
+function ueLoadMap(force){
+  if(UE_MAP_LOADING||(UE_MAP&&!force)) return;
+  UE_MAP_LOADING=true; UE_MAP_ERR=false;
+  fetch(SHEET_IMPORT_URL+'?action=getSkuMap',{cache:'no-store'})
+    .then(r=>r.json())
+    .then(r=>{
+      const m={};
+      (r.rows||[]).forEach(x=>{
+        const name=String(x.name||'').trim().toLowerCase(); const master=String(x.master||'').trim();
+        if(!name||!master) return;
+        const val={master:master,pack:ueNormPack(x.pack)};
+        const pt=String(x.portal||'').trim().toLowerCase().replace(/\s*nlc$/,'');
+        m[(pt||'*')+'|'+name]=val; if(!m['*|'+name]) m['*|'+name]=val;
+      });
+      UE_MAP=m;
+    })
+    .catch(()=>{ UE_MAP={}; UE_MAP_ERR=true; })
+    .finally(()=>{ UE_MAP_LOADING=false; if(S.view==='unit') render(); });
+}
+function ueMapLookup(p,name){
+  if(!UE_MAP) return null;
+  const n=String(name||'').trim().toLowerCase();
+  return UE_MAP[p+'|'+n]||UE_MAP['*|'+n]||null;
+}
+function ueCopyUnmapped(){
+  const t=(window.UE_UNMAPPED||[]).map(x=>x.join('\t')).join('\n');
+  const done=()=>toast('Copied '+(window.UE_UNMAPPED||[]).length+' rows. Paste into SKU_Map and fill Master SKU');
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(done).catch(()=>prompt('Copy these rows:',t));
+  else prompt('Copy these rows:',t);
+}
+
 const UE_KEYS=['gmv','qty','comm','gst','ns','cogs','de','lab','log','promos','adsvis'];
 const ueBlank=()=>{const a={};UE_KEYS.forEach(k=>a[k]=0);return a;};
 const ueAdd=(a,b)=>{UE_KEYS.forEach(k=>a[k]+=b[k]||0);};
@@ -2215,25 +2257,36 @@ function viewUnitEconomics(){
   }
 
   // Aggregate by matched SKU and portal
-  const groups={};
+  ueLoadMap();
+  const groups={}, unm={};
   const grand=ueBlank();
   ['blinkit','zepto','instamart'].forEach(p=>{
     selMonths.forEach(m=>{
       ueRowsFor(p,m).forEach(x=>{
-        const k=ueKey(x.name)||x.name;
-        if(!groups[k]) groups[k]={key:k,names:{},tot:ueBlank(),portals:{}};
+        const mp=ueMapLookup(p,x.name);
+        let k, label, mapped;
+        if(mp){ k='M|'+mp.master.toLowerCase()+'|'+mp.pack; label=mp.master+(mp.pack?' · '+mp.pack:''); mapped=true; }
+        else { const gr=ueGrams(x.name); k='A|'+(ueKey(x.name)||x.name)+'|'+gr; label=ueDisplay(x.name)+(gr?' · '+gr:''); mapped=false;
+               unm[p+'|'+x.name]=[pLabel(p),x.name,'',gr]; }
+        if(!groups[k]) groups[k]={key:k,names:{},tot:ueBlank(),portals:{},label:label,mapped:true};
         const g=groups[k];
+        if(!mapped) g.mapped=false;
         g.names[x.name]=p;
         if(!g.portals[p]) g.portals[p]=ueBlank();
         ueAdd(g.portals[p],x); ueAdd(g.tot,x); ueAdd(grand,x);
       });
     });
   });
-  const pickName=g=>{
-    const ns=Object.keys(g.names);
-    const pref=ns.find(n=>g.names[n]==='blinkit')||ns.find(n=>g.names[n]==='zepto')||ns[0];
-    return ueDisplay(pref);
-  };
+  const pickName=g=>g.label+(g.mapped?'':' <span class="ue-unm" title="Not in SKU_Map, matched automatically">Unmapped</span>');
+  window.UE_UNMAPPED=Object.values(unm);
+  const unmCount=window.UE_UNMAPPED.length;
+  const mapBar=UE_MAP_LOADING&&!UE_MAP
+    ? '<div class="ue-map-bar">Loading SKU_Map…</div>'
+    : (UE_MAP_ERR
+      ? '<div class="ue-map-bar warn">SKU_Map could not be loaded, all SKUs are auto matched by flavour + pack size. <button class="btn btn-outline btn-sm" onclick="ueLoadMap(true)">Retry</button></div>'
+      : (unmCount
+        ? '<div class="ue-map-bar warn">'+unmCount+' portal listing'+(unmCount>1?'s':'')+' not in SKU_Map, auto matched by flavour + pack size. <button class="btn btn-outline btn-sm" onclick="ueCopyUnmapped()">📋 Copy unmapped</button> <button class="btn btn-outline btn-sm" onclick="ueLoadMap(true)">↻ Reload map</button></div>'
+        : '<div class="ue-map-bar ok">All listings mapped via SKU_Map. <button class="btn btn-outline btn-sm" onclick="ueLoadMap(true)">↻ Reload map</button></div>'));
   const list=Object.values(groups).sort((a,b)=>b.tot.gmv-a.tot.gmv);
 
   const pu=(v,q)=>q>0?v/q:0;
@@ -2293,8 +2346,8 @@ function viewUnitEconomics(){
     +kpis
     +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
     +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
-    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs follow the same GMV route. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
-    +'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
+    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs follow the same GMV route. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
+    +mapBar+'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
 }
 
 // ── AI Insights ──────────────────────────────────────
@@ -2450,6 +2503,10 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-btn:hover{opacity:.9}
   .fs-strip{display:none}
   .ue-tbl tr.ue-main{cursor:pointer}
+  .ue-unm{font-size:10px;font-weight:700;color:#9A5B00;background:#FFF4E5;border-radius:4px;padding:1px 6px;margin-left:6px}
+  .ue-map-bar{margin:0 18px 10px;padding:8px 12px;border-radius:8px;font-size:12px;background:#F3F8F7;color:#334155;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ue-map-bar.warn{background:#FFF8EC;color:#7A4A00}
+  .ue-map-bar.ok{background:#EEF6F5;color:#02514F}
   .dash-tbl.ue-tbl tbody tr td:first-child{background:#fff!important}
   .dash-tbl.ue-tbl tbody tr.ue-sub td:first-child{background:#FAFCFC!important}
   .dash-tbl.ue-tbl tbody tr.gt td:first-child{background:#EEF6F5!important}
