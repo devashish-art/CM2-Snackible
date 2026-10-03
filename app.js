@@ -101,6 +101,8 @@ const S = {
   combineMode: 'single', // 'single' | 'range'
   combineFrom: null,
   combineTo:   null,
+  sideCollapsed: false,
+  showPromoPct: false,
 };
 
 async function save(explicitKey) {
@@ -531,9 +533,10 @@ function exportAllPortalsCurrentMonth() {
 
 // ── Sidebar ───────────────────────────────────────────
 function sidebar() {
-  const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')"><span class="nav-icon">'+ic+'</span><span>'+lb+'</span></div>';
-  const cp=(p,ic,lb)=>'<div class="pchip '+p+(S.portal===p?' active':'')+'" onclick="setPortal(\''+p+'\')">'+ic+' '+lb+'</div>';
-  return '<div class="sidebar"><div class="logo"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)">🔮 Projections ↗</a></div>';
+  const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')" title="'+lb+'"><span class="nav-icon">'+ic+'</span><span class="sb-lbl">'+lb+'</span></div>';
+  const cp=(p,ic,lb)=>'<div class="pchip '+p+(S.portal===p?' active':'')+'" onclick="setPortal(\''+p+'\')" title="'+lb+'">'+ic+'<span class="sb-lbl"> '+lb+'</span></div>';
+  const tgl='<button class="sb-toggle" onclick="toggleSidebar()" title="'+(S.sideCollapsed?'Expand':'Collapse')+' sidebar">'+(S.sideCollapsed?'»':'«')+'</button>';
+  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
 }
 
 // ── SKU LEADERS ───────────────────────────────────────
@@ -574,6 +577,40 @@ function skuLeaders(dAllSkus, cfg, dRawVals, regTotalW, nlcTotalW, pAds, pVis, p
     +'</div>'
     +'</div>';
 }
+
+// ── Dashboard table helpers ───────────────────────────
+// Promo % sub-row shown below each SKU row (hidden until toggled)
+function promoSubRow(c){
+  const g = c.gmv>0 ? fmtPct(c.promos/c.gmv*100) : '—';
+  const n = c.netSales>0 ? fmtPct(c.promos/c.netSales*100) : '—';
+  let cells='<td class="ps-lbl">↳ Promo %</td>';
+  for(let i=1;i<18;i++){
+    cells += i===13
+      ? '<td class="r ps-val"><span>'+g+' <small>GMV</small></span><span>'+n+' <small>NS</small></span></td>'
+      : '<td></td>';
+  }
+  return '<tr class="promo-sub">'+cells+'</tr>';
+}
+// % rows below a total: Direct Exp, Labour, Logistics as % of NS; Promos, Ads, Vis as % of GMV and NS
+function pctRows(t){
+  if(!t) return '';
+  const pg = v => t.gmv>0 ? fmtPct(v/t.gmv*100) : '—';
+  const pn = v => t.netSales>0 ? fmtPct(v/t.netSales*100) : '—';
+  const gmvMap = {13:pg(t.promos),14:pg(t.ads),15:pg(t.vis)};
+  const nsMap  = {7:pn(t.directExp),9:pn(t.labour),10:pn(t.logistics),13:pn(t.promos),14:pn(t.ads),15:pn(t.vis)};
+  const mk=(label,map)=>{
+    let cells='<td>'+label+'</td>';
+    for(let i=1;i<18;i++) cells+='<td class="r">'+(map[i]||'')+'</td>';
+    return '<tr class="pct-row">'+cells+'</tr>';
+  };
+  return mk('% of GMV',gmvMap)+mk('% of Net Sales',nsMap);
+}
+function togglePromoPct(){
+  S.showPromoPct=!S.showPromoPct;
+  const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-promo',S.showPromoPct);
+  const b=document.getElementById('promo-pct-btn'); if(b) b.textContent=(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %';
+}
+function toggleSidebar(){ S.sideCollapsed=!S.sideCollapsed; render(); }
 
 // ── DASHBOARD ─────────────────────────────────────────
 function viewDashboard() {
@@ -644,7 +681,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>';
+      +'</tr>'+promoSubRow(c);
   }).join('');
 
   // Regular subtotal (only for Instamart which has NLC)
@@ -668,7 +705,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tReg.vis)+'</td>'
     +'<td class="r">₹'+fmt(tReg.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tReg.cm2Pct)+'">'+fmtPct(tReg.cm2Pct)+'</span></td>'
-    +'</tr>' : '';
+    +'</tr>'+pctRows(tReg) : '';
 
   // NLC section header + rows
   const nlcSectionHdr = dNlcSkus.length > 0 ? '<tr style="background:#DCEEFF"><td colspan="18" style="font-size:11px;font-weight:700;color:#235D8A;padding:6px 8px;letter-spacing:.04em">NLC SKUs</td></tr>' : '';
@@ -699,7 +736,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>';
+      +'</tr>'+promoSubRow(c);
   }).join('');
 
   // NLC subtotal
@@ -723,7 +760,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tNlc.vis)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tNlc.cm2Pct)+'">'+fmtPct(tNlc.cm2Pct)+'</span></td>'
-    +'</tr>' : '';
+    +'</tr>'+pctRows(tNlc) : '';
 
   const rows = regRows + regSubtotal + nlcSectionHdr + nlcRows + nlcSubtotal;
   const splitToggle='<div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'
@@ -738,11 +775,11 @@ function viewDashboard() {
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val">₹'+fmt(t.gmv)+'</div><div class="sub">'+(mom?delta(mom.gmv,'%'):'—')+'</div><div class="abar" style="background:'+pColor(S.portal)+'"></div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(t.netSales)+'</div><div class="sub">After '+cfg.commission+'% comm + '+cfg.tax+'% GST</div><div class="abar" style="background:var(--mint)"></div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(t.cm1Pct)+'">₹'+fmt(t.cm1)+'</div><div class="sub">'+fmtPct(t.cm1Pct)+' of Net Sales '+(mom?delta(mom.cm1Pct):'')+'</div><div class="abar" style="background:var(--blue)"></div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(t.cm2Pct)+'">₹'+fmt(t.cm2)+'</div><div class="sub">'+fmtPct(t.cm2Pct)+' of Net Sales '+(mom?delta(mom.cm2Pct):'')+'</div><div class="abar" style="background:'+(t.cm2Pct>=0?'var(--pos)':'var(--neg)')+'"></div></div></div>'
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Commission</div><div class="val warn">₹'+fmt(t.commission)+'</div><div class="sub">'+cfg.commission+'% of GMV</div></div><div class="card stat"><div class="lbl">Gross Margin</div><div class="val">₹'+fmt(t.grossMargin)+'</div><div class="sub">After COGS + Direct Exp</div></div><div class="card stat"><div class="lbl">Promos</div><div class="val warn">₹'+fmt(t.promos)+'</div><div class="sub">'+fmtPct(t.promosPct)+' of GMV</div></div><div class="card stat"><div class="lbl">Ads + Visibility</div><div class="val warn">₹'+fmt(t.ads+t.vis)+'</div><div class="sub">Marketing</div></div></div>'
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'</div></div><div class="twrap"><table><thead><tr>'
+  +'<div class="card tcard"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button></div></div><div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
-  +'</tr></tbody></table></div>'
+  +'</tr>'+pctRows(t)+'</tbody></table></div>'
   // ── Saved metrics bar ──────────────────────────────
   +'<div style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
   +'<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Saved Metrics (% of Net Sales)</div>'
@@ -2021,6 +2058,51 @@ function setPortal(p) { const prevMonth=S.month; S.portal=p; S.month=(prevMonth&
 function setDashSplit(v){ S.dashSplit=v; render(); }
 function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; delete S.data[dKey(p,m)]; fetch(SHEET_IMPORT_URL + '?action=deleteChunk&chunkKey=' + encodeURIComponent('cm2_chunk_' + dKey(p,m)), { cache: 'no-store' }); S.month=null; toast('Deleted '+m); render(); }
 
+
+// ── Injected UI styles (sidebar collapse, table spacing, frozen SKU column) ──
+(function injectUiStyles(){
+  if(document.getElementById('cm2-ui-styles')) return;
+  const st=document.createElement('style'); st.id='cm2-ui-styles';
+  st.textContent=`
+  .sidebar{transition:width .2s,min-width .2s}
+  .sb-logo{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .sb-toggle{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;padding:4px 8px;font-family:Poppins,sans-serif}
+  .sb-toggle:hover{background:rgba(255,255,255,.18)}
+  .sidebar.collapsed{width:72px!important;min-width:72px!important;padding-left:10px!important;padding-right:10px!important;overflow:hidden}
+  .sidebar.collapsed .sb-lbl,.sidebar.collapsed .sec-label{display:none!important}
+  .sidebar.collapsed .sb-logo{justify-content:center}
+  .sidebar.collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0}
+  .sidebar.collapsed .portal-chips{display:flex;flex-direction:column;gap:6px}
+  .sidebar.collapsed .pchip{text-align:center;padding-left:0;padding-right:0}
+  .dash-tbl th,.dash-tbl td{padding:13px 16px!important}
+  .dash-tbl th:first-child,.dash-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 #D9E3E2}
+  .dash-tbl thead th:first-child{z-index:3;background:#F3F8F7}
+  .dash-tbl tr.gt td:first-child{background:#EEF6F5}
+  .dash-tbl tr[style] td:first-child{background:inherit}
+  .dash-tbl tr.promo-sub{display:none}
+  .dash-tbl.show-promo tr.promo-sub{display:table-row}
+  .dash-tbl tr.promo-sub td{padding-top:4px!important;padding-bottom:8px!important;background:#FAFCFC;border-top:none;font-size:11px;color:var(--tx3)}
+  .dash-tbl tr.promo-sub td:first-child{background:#FAFCFC;font-style:italic;padding-left:28px!important}
+  .dash-tbl .ps-val{white-space:nowrap}
+  .dash-tbl .ps-val span{display:inline-block;background:#FFF4E5;color:#9A5B00;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:600}
+  .dash-tbl .ps-val small{font-weight:500;opacity:.8}
+  .dash-tbl tr.pct-row td{padding-top:7px!important;padding-bottom:7px!important;font-size:11px;font-weight:600;color:var(--green);background:#F7FBFA}
+  .dash-tbl tr.pct-row td:first-child{background:#F7FBFA;color:var(--tx3)}
+  `;
+  document.head.appendChild(st);
+})();
+
+// Keep main content aligned when the sidebar is position:fixed
+function syncSidebarOffset(){
+  const sb=document.querySelector('.sidebar'), mn=document.querySelector('.main');
+  if(!sb||!mn) return;
+  if(getComputedStyle(sb).position==='fixed'){
+    mn.style.marginLeft=sb.offsetWidth+'px';
+    mn.style.transition='margin-left .2s';
+    setTimeout(()=>{ mn.style.marginLeft=sb.offsetWidth+'px'; },220);
+  }
+}
+
 // ── Render ────────────────────────────────────────────
 function render(){
   let body='';
@@ -2031,6 +2113,7 @@ function render(){
   else if(S.view==='insights')  body=viewInsights();
   document.getElementById('app').innerHTML='<div class="shell">'+sidebar()+'<main class="main">'+body+'</main></div>';
   document.querySelectorAll('main script').forEach(function(s){var el=document.createElement('script');el.textContent=s.textContent;document.body.appendChild(el);});
+  syncSidebarOffset();
 }
 
 // Show loading screen while fetching server data
