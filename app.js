@@ -719,7 +719,7 @@ function viewDashboard() {
     const c=calcSKU(sku,cfg,true,aA,vA,pA);
     return '<tr style="background:#F0F7FF">'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+sku.name+'"><span class="ntag">NLC</span> '+shortN(sku.name)+'</td>'
-      +'<td class="r"><span style="color:var(--tx3)">'+fmt(c.gmv)+' <small>ref</small></span></td>'
+      +'<td class="r nlc-ref" title="Reference only, not used in calculations">₹'+fmt(c.gmv)+'</td>'
       +'<td class="r">₹'+fmt(c.grossSales)+'</td>'
       +'<td class="r">₹'+fmt(c.netSales)+'</td>'
       +'<td class="r">'+fmt(c.qty)+'</td>'
@@ -743,7 +743,7 @@ function viewDashboard() {
   const tNlc = dNlcSkus.length > 0 ? totals([], e.nlcSkus||[], cfg, nlcPT, nlcPT) : null;
   const nlcSubtotal = tNlc ? '<tr class="gt" style="background:#DCEEFF">'
     +'<td>NLC Subtotal</td>'
-    +'<td class="r"><span style="color:var(--tx3)">'+fmt(tNlc.gmv)+' <small>ref</small></span></td>'
+    +'<td class="r nlc-ref" title="Reference only, not used in calculations">₹'+fmt(tNlc.gmv)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.grossSales)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.netSales)+'</td>'
     +'<td class="r">'+fmt(tNlc.qty)+'</td>'
@@ -2081,6 +2081,7 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl thead th:first-child{min-width:300px}
   .dash-tbl tr.gt td:first-child{background:#EEF6F5}
   .dash-tbl tr[style] td:first-child{background:inherit}
+  .dash-tbl td.nlc-ref{background:#E4E9F0!important;color:#64748B;font-style:italic}
   .dash-tbl tr.promo-sub{display:none}
   .dash-tbl.show-promo tr.promo-sub{display:table-row}
   .dash-tbl tr.promo-sub td{padding-top:4px!important;padding-bottom:8px!important;background:#FAFCFC;border-top:none;font-size:11px;color:var(--tx3)}
