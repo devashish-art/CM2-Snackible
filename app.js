@@ -617,6 +617,44 @@ function togglePct(){
   const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-pct',S.showPct);
   const b=document.getElementById('pct-btn'); if(b) b.textContent=S.showPct?'▴ Hide %':'▾ Show %';
 }
+// KPI strip shown only in expanded (fullscreen) view
+function fsStrip(t,sel){
+  const chip=(lb,val,sub,cls)=>'<div class="fs-chip"><div class="fs-chip-lb">'+lb+'</div><div class="fs-chip-val '+(cls||'')+'">'+val+'</div>'+(sub?'<div class="fs-chip-sub">'+sub+'</div>':'')+'</div>';
+  return '<div class="fs-strip">'
+    +'<div class="fs-meta">'+pBadge(S.portal)+'<span class="fs-month">'+sel+'</span></div>'
+    +'<div class="fs-chips">'
+    +chip('GMV','₹'+fmt(t.gmv))
+    +chip('Net Sales','₹'+fmt(t.netSales))
+    +chip('CM1','₹'+fmt(t.cm1),fmtPct(t.cm1Pct)+' of NS',pc(t.cm1Pct))
+    +chip('CM2','₹'+fmt(t.cm2),fmtPct(t.cm2Pct)+' of NS',pc(t.cm2Pct))
+    +'</div></div>';
+}
+// Expand the SKU table to true fullscreen; falls back to a full-window overlay
+function toggleSkuFullscreen(){
+  const card=document.getElementById('sku-card'); if(!card) return;
+  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+  if(fsEl){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); return; }
+  if(card.classList.contains('is-fs')){ setSkuFs(false); return; }
+  const req=card.requestFullscreen||card.webkitRequestFullscreen;
+  if(req){
+    try{ const pr=req.call(card); if(pr&&pr.catch) pr.catch(()=>setSkuFs(true)); }
+    catch(e){ setSkuFs(true); }
+  } else setSkuFs(true);
+}
+function setSkuFs(on){
+  const card=document.getElementById('sku-card'); if(!card) return;
+  card.classList.toggle('is-fs',on);
+  document.body.style.overflow=on?'hidden':'';
+  const b=document.getElementById('fs-btn'); if(b) b.textContent=on?'✕ Exit':'⛶ Expand';
+}
+['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev,()=>{
+  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+  setSkuFs(!!fsEl && fsEl.id==='sku-card');
+}));
+document.addEventListener('keydown',e=>{
+  const card=document.getElementById('sku-card');
+  if(e.key==='Escape'&&card&&card.classList.contains('is-fs')&&!document.fullscreenElement) setSkuFs(false);
+});
 function togglePromoPct(){
   S.showPromoPct=!S.showPromoPct;
   const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-promo',S.showPromoPct);
@@ -787,13 +825,13 @@ function viewDashboard() {
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val">₹'+fmt(t.gmv)+'</div><div class="sub">'+(mom?delta(mom.gmv,'%'):'—')+'</div><div class="abar" style="background:'+pColor(S.portal)+'"></div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(t.netSales)+'</div><div class="sub">After '+cfg.commission+'% comm + '+cfg.tax+'% GST</div><div class="abar" style="background:var(--mint)"></div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(t.cm1Pct)+'">₹'+fmt(t.cm1)+'</div><div class="sub">'+fmtPct(t.cm1Pct)+' of Net Sales '+(mom?delta(mom.cm1Pct):'')+'</div><div class="abar" style="background:var(--blue)"></div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(t.cm2Pct)+'">₹'+fmt(t.cm2)+'</div><div class="sub">'+fmtPct(t.cm2Pct)+' of Net Sales '+(mom?delta(mom.cm2Pct):'')+'</div><div class="abar" style="background:'+(t.cm2Pct>=0?'var(--pos)':'var(--neg)')+'"></div></div></div>'
   +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Commission</div><div class="val warn">₹'+fmt(t.commission)+'</div><div class="sub">'+cfg.commission+'% of GMV</div></div><div class="card stat"><div class="lbl">Gross Margin</div><div class="val">₹'+fmt(t.grossMargin)+'</div><div class="sub">After COGS + Direct Exp</div></div><div class="card stat"><div class="lbl">Promos</div><div class="val warn">₹'+fmt(t.promos)+'</div><div class="sub">'+fmtPct(t.promosPct)+' of GMV</div></div><div class="card stat"><div class="lbl">Ads + Visibility</div><div class="val warn">₹'+fmt(t.ads+t.vis)+'</div><div class="sub">Marketing</div></div></div>'
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button></div></div><div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
+  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
   +'</tr>'+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
   // ── Saved metrics bar ──────────────────────────────
-  +'<div style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
+  +'<div class="saved-metrics" style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
   +'<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Saved Metrics (% of Net Sales)</div>'
   +'<div style="display:flex;flex-wrap:wrap;gap:10px">'
   +[
@@ -2088,7 +2126,26 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .sidebar.collapsed .pchip{text-align:center;padding-left:0;padding-right:0}
   .dash-tbl th,.dash-tbl td{padding:13px 16px!important}
   .dash-tbl th:first-child,.dash-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 #D9E3E2}
-  .dash-tbl thead th:first-child{z-index:3;background:#F3F8F7}
+  .dash-tbl thead th{position:sticky;top:0;z-index:4;background:#F3F8F7;box-shadow:inset 0 -1px 0 #D9E3E2}
+  .dash-tbl thead th:first-child{z-index:5;left:0;background:#F3F8F7;box-shadow:inset -1px -1px 0 #D9E3E2}
+  .sku-card .twrap{max-height:72vh;overflow:auto}
+  .fs-btn{background:var(--green);color:#fff;border:1.5px solid var(--green);font-weight:600;white-space:nowrap}
+  .fs-btn:hover{opacity:.9}
+  .fs-strip{display:none}
+  .sku-card.is-fs{position:fixed;inset:0;z-index:9999;margin:0;border-radius:0;width:100vw;height:100vh;max-width:none;display:flex;flex-direction:column;background:#fff;padding:16px 24px;box-sizing:border-box;overflow:hidden}
+  .sku-card:fullscreen{width:100vw;height:100vh;background:#fff}
+  .sku-card.is-fs .fs-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:10px 0 14px}
+  .sku-card.is-fs .twrap{flex:1;max-height:none;min-height:0}
+  .sku-card.is-fs .saved-metrics{display:none}
+  .fs-meta{display:flex;align-items:center;gap:10px}
+  .fs-month{font-size:14px;font-weight:600;color:var(--tx)}
+  .fs-chips{display:flex;gap:10px;flex-wrap:wrap}
+  .fs-chip{background:#F3F8F7;border:1px solid #D9E3E2;border-radius:8px;padding:8px 14px;min-width:120px}
+  .fs-chip-lb{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em}
+  .fs-chip-val{font-size:17px;font-weight:700;color:var(--tx)}
+  .fs-chip-sub{font-size:11px;color:var(--tx3)}
+  .fs-chip-val.pos{color:var(--pos)}
+  .fs-chip-val.neg{color:var(--neg)}
   .dash-tbl tbody td:first-child{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:300px!important;width:300px;min-width:300px}
   .dash-tbl thead th:first-child{min-width:300px}
   .dash-tbl tr.gt td:first-child{background:#EEF6F5}
