@@ -662,6 +662,76 @@ function togglePromoPct(){
 }
 function toggleSidebar(){ S.sideCollapsed=!S.sideCollapsed; render(); }
 
+// Shared KPI mini grid: This month / Prev / MoM / 3M avg (agg=null hides 3M row)
+function kpiGridHTML(cols,cost,t,prev,prevLbl,agg,hideAgg){
+  const cellVal=(col,src,isAgg)=>{
+    if(!src) return null;
+    if(col.type==='amt'){ const v=col.val(src); return isAgg?v/src.n:v; }
+    const d=col.den(src); return d>0?col.num(src)/d*100:null;
+  };
+  const multi=cols.length>1;
+  const hasPct=cols.some(c=>c.type==='pct');
+  const fA=multi?fmtL:(v=>'₹'+fmt(v));
+  const fmtCell=(col,v)=>v===null?'—':(col.type==='amt'?fA(v):fmtPct(v));
+  let h='<table class="kpi-grid">';
+  if(multi) h+='<tr><th></th>'+cols.map(c=>'<th>'+c.h+'</th>').join('')+'</tr>';
+  if(hasPct) h+='<tr class="kg-now"><td>Current</td>'+cols.map(c=>'<td>'+(c.type==='amt'?'':fmtPct(cellVal(c,t)))+'</td>').join('')+'</tr>';
+  h+='<tr><td>'+prevLbl+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,prev))+'</td>').join('')+'</tr>';
+  h+='<tr><td>Change</td>'+cols.map(c=>{
+    const cur=cellVal(c,t), pv=cellVal(c,prev);
+    if(cur===null||pv===null) return '<td>—</td>';
+    let d, txt;
+    if(c.type==='amt'){ if(!pv) return '<td>—</td>'; d=(cur-pv)/Math.abs(pv)*100; txt=Math.abs(d).toFixed(1)+'%'; }
+    else { d=cur-pv; txt=Math.abs(d).toFixed(1)+'pp'; }
+    const good=cost?d<=0:d>=0;
+    return '<td class="'+(good?'kg-up':'kg-dn')+'">'+(d>=0?'▲ ':'▼ ')+txt+'</td>';
+  }).join('')+'</tr>';
+  if(!hideAgg) h+='<tr><td>3M avg'+(agg&&agg.n<3?' ('+agg.n+'M)':'')+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,agg,true))+'</td>').join('')+'</tr>';
+  return h+'</table>';
+}
+// Combined (all portals) totals for one month, same basis as Combined view
+function combMonthTotals(m){
+  const keys=['gmv','netSales','grossMargin','logistics','cm1','cm2','promos','ads','vis'];
+  const acc={}; keys.forEach(k=>acc[k]=0); let any=false;
+  ['blinkit','zepto','instamart'].forEach(p=>{
+    const e=S.data[dKey(p,m)]; if(!e) return;
+    const t=totals(e.skus,e.nlcSkus,e.config||S.config[p],e.portalTotals,e.nlcTotals);
+    keys.forEach(k=>acc[k]+=t[k]||0); any=true;
+  });
+  return any?acc:null;
+}
+function sumTotals(list){
+  if(!list.length) return null;
+  const keys=['gmv','netSales','grossMargin','logistics','cm1','cm2','promos','ads','vis'];
+  const a={n:list.length}; keys.forEach(k=>a[k]=list.reduce((x,y)=>x+(y[k]||0),0)); return a;
+}
+// Top 4 KPI cards for Combined view (single month: prev month + 3M avg; range: prev equal period)
+function combKpiCards(comb,selMonths,mode){
+  const firstIdx=MONTHS.indexOf(selMonths[0]);
+  const len=selMonths.length;
+  let prev=null, prevLbl='Prev', agg=null, hideAgg=false;
+  if(mode==='single'){
+    const pm=firstIdx>0?MONTHS[firstIdx-1]:null;
+    prev=pm?combMonthTotals(pm):null; prevLbl=pm?'Prev ('+pm.slice(0,3)+')':'Prev';
+    const win=[]; for(let i=firstIdx-3;i<firstIdx;i++){ if(i>=0){ const x=combMonthTotals(MONTHS[i]); if(x) win.push(x); } }
+    agg=sumTotals(win);
+  } else {
+    const list=[]; for(let i=firstIdx-len;i<firstIdx;i++){ if(i>=0){ const x=combMonthTotals(MONTHS[i]); if(x) list.push(x); } }
+    prev=sumTotals(list); prevLbl='Prev '+len+'M'; hideAgg=true;
+  }
+  const amt=(h,f)=>({h:h,type:'amt',val:f});
+  const pct=(h,n,d)=>({h:h,type:'pct',num:n,den:d});
+  const NS=x=>x.netSales, GMV=x=>x.gmv;
+  const card=(lbl,val,cls,cols)=>'<div class="card stat"><div class="lbl">'+lbl+'</div><div class="val '+(cls||'')+'">₹'+fmt(val)+'</div>'+kpiGridHTML(cols,false,comb,prev,prevLbl,agg,hideAgg)+'</div>';
+  const c1=comb.netSales>0?comb.cm1/comb.netSales*100:0, c2=comb.netSales>0?comb.cm2/comb.netSales*100:0;
+  return '<div class="g4 mb20">'
+    +card('Total GMV',comb.gmv,'',[amt('₹',GMV)])
+    +card('Net Sales',comb.netSales,'',[amt('₹',NS)])
+    +card('CM1',comb.cm1,pc(c1),[amt('₹',x=>x.cm1),pct('% NS',x=>x.cm1,NS),pct('% GMV',x=>x.cm1,GMV)])
+    +card('CM2',comb.cm2,pc(c2),[amt('₹',x=>x.cm2),pct('% NS',x=>x.cm2,NS),pct('% GMV',x=>x.cm2,GMV)])
+    +'</div>';
+}
+
 // ── KPI cards (current vs prev month vs 3 month avg) ──
 // Totals for a portal-month using the same allocation basis as the dashboard
 function dashMonthTotals(p,m){
@@ -689,32 +759,7 @@ function kpiCards(t,sel){
   let agg=null;
   if(win.length){ agg={n:win.length}; keys.forEach(k=>{ agg[k]=win.reduce((a,x)=>a+(x[k]||0),0); }); }
 
-  const cellVal=(col,src,isAgg)=>{
-    if(!src) return null;
-    if(col.type==='amt'){ const v=col.val(src); return isAgg?v/src.n:v; }
-    const d=col.den(src); return d>0?col.num(src)/d*100:null;
-  };
-  const grid=(cols,cost)=>{
-    const multi=cols.length>1;
-    const hasPct=cols.some(c=>c.type==='pct');
-    const fA=multi?fmtL:(v=>'₹'+fmt(v));
-    const fmtCell=(col,v)=>v===null?'—':(col.type==='amt'?fA(v):fmtPct(v));
-    let h='<table class="kpi-grid">';
-    if(multi) h+='<tr><th></th>'+cols.map(c=>'<th>'+c.h+'</th>').join('')+'</tr>';
-    if(hasPct) h+='<tr class="kg-now"><td>This month</td>'+cols.map(c=>'<td>'+(c.type==='amt'?'':fmtPct(cellVal(c,t)))+'</td>').join('')+'</tr>';
-    h+='<tr><td>Prev'+(prevM?' ('+prevM.slice(0,3)+')':'')+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,prev))+'</td>').join('')+'</tr>';
-    h+='<tr><td>MoM</td>'+cols.map(c=>{
-      const cur=cellVal(c,t), pv=cellVal(c,prev);
-      if(cur===null||pv===null) return '<td>—</td>';
-      let d, txt;
-      if(c.type==='amt'){ if(!pv) return '<td>—</td>'; d=(cur-pv)/Math.abs(pv)*100; txt=Math.abs(d).toFixed(1)+'%'; }
-      else { d=cur-pv; txt=Math.abs(d).toFixed(1)+'pp'; }
-      const good=cost?d<=0:d>=0;
-      return '<td class="'+(good?'kg-up':'kg-dn')+'">'+(d>=0?'▲ ':'▼ ')+txt+'</td>';
-    }).join('')+'</tr>';
-    h+='<tr><td>3M avg'+(agg&&agg.n<3?' ('+agg.n+'M)':'')+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,agg,true))+'</td>').join('')+'</tr>';
-    return h+'</table>';
-  };
+  const grid=(cols,cost)=>kpiGridHTML(cols,cost,t,prev,prevM?'Prev ('+prevM.slice(0,3)+')':'Prev',agg);
   const amt=(h,f)=>({h:h,type:'amt',val:f});
   const pct=(h,n,d)=>({h:h,type:'pct',num:n,den:d});
   const NS=x=>x.netSales, GMV=x=>x.gmv;
@@ -1478,7 +1523,7 @@ function viewCombined(){
     selMonths.forEach(m=>{const e=S.data[dKey(p,m)];if(!e)return;const t=totals(e.skus,e.nlcSkus,e.config||S.config[p],e.portalTotals,e.nlcTotals);Object.keys(acc).forEach(k=>{if(t[k]!==undefined)acc[k]+=t[k];});});
     if(acc.gmv>0){acc.cm1Pct=acc.netSales>0?acc.cm1/acc.netSales*100:0;acc.cm2Pct=acc.netSales>0?acc.cm2/acc.netSales*100:0;tMap[p]=acc;}
   });
-  const comb={gmv:0,netSales:0,grossMargin:0,cm1:0,cm2:0,promos:0,ads:0,vis:0};
+  const comb={gmv:0,netSales:0,grossMargin:0,cm1:0,cm2:0,promos:0,ads:0,vis:0,logistics:0};
   Object.values(tMap).forEach(t=>{comb.gmv+=t.gmv;comb.netSales+=t.netSales;comb.grossMargin+=t.grossMargin;comb.cm1+=t.cm1;comb.cm2+=t.cm2;comb.promos+=t.promos;comb.ads+=t.ads;comb.vis+=t.vis;});
   const cCM1=comb.netSales>0?comb.cm1/comb.netSales*100:0;
   const cCM2=comb.netSales>0?comb.cm2/comb.netSales*100:0;
@@ -1500,7 +1545,7 @@ function viewCombined(){
     return '<tr><td>'+pBadge(p)+'</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="r"><span class="pill '+pc(t.cm1Pct)+'" style="font-size:10px">'+fmtPct(t.cm1Pct)+'</span></td><td class="r"><span class="pill '+pc(cm1gmv)+'" style="font-size:10px">'+fmtPct(cm1gmv)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads+t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="r"><span class="pill '+pc(t.cm2Pct)+'" style="font-size:10px">'+fmtPct(t.cm2Pct)+'</span></td><td class="r"><span class="pill '+pc(cm2gmv)+'" style="font-size:10px">'+fmtPct(cm2gmv)+'</span></td></tr>';
   }).join('');
   return '<div class="ph"><div><div class="ph-title">Combined View</div><div class="ph-sub">All Portals · '+periodLabel+'</div></div>'+headerSub+'</div>'
-    +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val pos">₹'+fmt(comb.gmv)+'</div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(comb.netSales)+'</div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(cCM1)+'">₹'+fmt(comb.cm1)+'</div><div class="sub">'+fmtPct(cCM1)+' Net Sales · '+fmtPct(cCM1gmv)+' GMV</div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(cCM2)+'">₹'+fmt(comb.cm2)+'</div><div class="sub">'+fmtPct(cCM2)+' Net Sales · '+fmtPct(cCM2gmv)+' GMV</div></div></div>'
+    +combKpiCards(comb,selMonths,mode)
     +'<div class="g3 mb20">'+pCards+'</div>'
     +'<div class="card tcard"><div class="thead-row"><div class="thead-title">Portal Comparison · '+periodLabel+'</div></div><div class="twrap"><table><thead><tr><th>Portal</th><th class="r">GMV</th><th class="r">Net Sales</th><th class="r">Gross Margin</th><th class="r">CM1 ₹</th><th class="r">CM1% Net</th><th class="r">CM1% GMV</th><th class="r">Promos ₹</th><th class="r">Ads+Vis ₹</th><th class="r">CM2 ₹</th><th class="r">CM2% Net</th><th class="r">CM2% GMV</th></tr></thead><tbody>'+cmpRows
     +'<tr class="gt"><td>Combined</td><td class="r">₹'+fmt(comb.gmv)+'</td><td class="r">₹'+fmt(comb.netSales)+'</td><td class="r">₹'+fmt(comb.grossMargin)+'</td><td class="r">₹'+fmt(comb.cm1)+'</td><td class="r"><span class="pill '+pc(cCM1)+'" style="font-size:10px">'+fmtPct(cCM1)+'</span></td><td class="r"><span class="pill '+pc(cCM1gmv)+'" style="font-size:10px">'+fmtPct(cCM1gmv)+'</span></td><td class="r">₹'+fmt(comb.promos)+'</td><td class="r">₹'+fmt(comb.ads+comb.vis)+'</td><td class="r">₹'+fmt(comb.cm2)+'</td><td class="r"><span class="pill '+pc(cCM2)+'" style="font-size:10px">'+fmtPct(cCM2)+'</span></td><td class="r"><span class="pill '+pc(cCM2gmv)+'" style="font-size:10px">'+fmtPct(cCM2gmv)+'</span></td></tr></tbody></table></div></div>';
