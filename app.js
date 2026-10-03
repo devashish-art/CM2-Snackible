@@ -662,6 +662,78 @@ function togglePromoPct(){
 }
 function toggleSidebar(){ S.sideCollapsed=!S.sideCollapsed; render(); }
 
+// ── KPI cards (current vs prev month vs 3 month avg) ──
+// Totals for a portal-month using the same allocation basis as the dashboard
+function dashMonthTotals(p,m){
+  const e=S.data[dKey(p,m)]; if(!e) return null;
+  const cfg=e.config||S.config[p];
+  const pt=Object.assign({},e.portalTotals||{},{splitBy:S.dashSplit});
+  const np=Object.assign({},e.nlcTotals||{},{splitBy:S.dashSplit});
+  return totals(e.skus,e.nlcSkus,cfg,pt,np);
+}
+// Compact rupee format for multi-column grids: ₹37.9L / ₹1.79Cr
+function fmtL(n){
+  const a=Math.abs(n), sg=n<0?'-':'';
+  if(a>=1e7) return '₹'+sg+(a/1e7).toFixed(2)+'Cr';
+  if(a>=1e5) return '₹'+sg+(a/1e5).toFixed(1)+'L';
+  return '₹'+sg+fmt(a);
+}
+function kpiCards(t,sel){
+  const idx=MONTHS.indexOf(sel);
+  const prevM=idx>0?MONTHS[idx-1]:null;
+  const prev=prevM?dashMonthTotals(S.portal,prevM):null;
+  // 3 calendar months before current, weighted (sum of amounts / sum of base)
+  const win=[];
+  for(let i=idx-3;i<idx;i++){ if(i>=0){ const x=dashMonthTotals(S.portal,MONTHS[i]); if(x) win.push(x); } }
+  const keys=['gmv','netSales','grossMargin','logistics','cm1','cm2','promos','ads','vis'];
+  let agg=null;
+  if(win.length){ agg={n:win.length}; keys.forEach(k=>{ agg[k]=win.reduce((a,x)=>a+(x[k]||0),0); }); }
+
+  const cellVal=(col,src,isAgg)=>{
+    if(!src) return null;
+    if(col.type==='amt'){ const v=col.val(src); return isAgg?v/src.n:v; }
+    const d=col.den(src); return d>0?col.num(src)/d*100:null;
+  };
+  const grid=(cols,cost)=>{
+    const multi=cols.length>1;
+    const hasPct=cols.some(c=>c.type==='pct');
+    const fA=multi?fmtL:(v=>'₹'+fmt(v));
+    const fmtCell=(col,v)=>v===null?'—':(col.type==='amt'?fA(v):fmtPct(v));
+    let h='<table class="kpi-grid">';
+    if(multi) h+='<tr><th></th>'+cols.map(c=>'<th>'+c.h+'</th>').join('')+'</tr>';
+    if(hasPct) h+='<tr class="kg-now"><td>This month</td>'+cols.map(c=>'<td>'+(c.type==='amt'?'':fmtPct(cellVal(c,t)))+'</td>').join('')+'</tr>';
+    h+='<tr><td>Prev'+(prevM?' ('+prevM.slice(0,3)+')':'')+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,prev))+'</td>').join('')+'</tr>';
+    h+='<tr><td>MoM</td>'+cols.map(c=>{
+      const cur=cellVal(c,t), pv=cellVal(c,prev);
+      if(cur===null||pv===null) return '<td>—</td>';
+      let d, txt;
+      if(c.type==='amt'){ if(!pv) return '<td>—</td>'; d=(cur-pv)/Math.abs(pv)*100; txt=Math.abs(d).toFixed(1)+'%'; }
+      else { d=cur-pv; txt=Math.abs(d).toFixed(1)+'pp'; }
+      const good=cost?d<=0:d>=0;
+      return '<td class="'+(good?'kg-up':'kg-dn')+'">'+(d>=0?'▲ ':'▼ ')+txt+'</td>';
+    }).join('')+'</tr>';
+    h+='<tr><td>3M avg'+(agg&&agg.n<3?' ('+agg.n+'M)':'')+'</td>'+cols.map(c=>'<td>'+fmtCell(c,cellVal(c,agg,true))+'</td>').join('')+'</tr>';
+    return h+'</table>';
+  };
+  const amt=(h,f)=>({h:h,type:'amt',val:f});
+  const pct=(h,n,d)=>({h:h,type:'pct',num:n,den:d});
+  const NS=x=>x.netSales, GMV=x=>x.gmv;
+  const card=(lbl,val,cls,cols,cost,bar)=>'<div class="card stat"><div class="lbl">'+lbl+'</div><div class="val '+(cls||'')+'">₹'+fmt(val)+'</div>'+grid(cols,cost)+(bar?'<div class="abar" style="background:'+bar+'"></div>':'')+'</div>';
+  const adsVis=x=>x.ads+x.vis;
+
+  return '<div class="g4 mb20">'
+    +card('Total GMV',t.gmv,'',[amt('₹',GMV)],false,pColor(S.portal))
+    +card('Net Sales',t.netSales,'',[amt('₹',NS)],false,'var(--mint)')
+    +card('CM1',t.cm1,pc(t.cm1Pct),[amt('₹',x=>x.cm1),pct('% NS',x=>x.cm1,NS),pct('% GMV',x=>x.cm1,GMV)],false,'var(--blue)')
+    +card('CM2',t.cm2,pc(t.cm2Pct),[amt('₹',x=>x.cm2),pct('% NS',x=>x.cm2,NS),pct('% GMV',x=>x.cm2,GMV)],false,(t.cm2Pct>=0?'var(--pos)':'var(--neg)'))
+    +'</div><div class="g4 mb20">'
+    +card('Logistics',t.logistics,'warn',[amt('₹',x=>x.logistics),pct('% NS',x=>x.logistics,NS)],true)
+    +card('Gross Margin',t.grossMargin,'',[amt('₹',x=>x.grossMargin),pct('% NS',x=>x.grossMargin,NS)],false)
+    +card('Promos',t.promos,'warn',[amt('₹',x=>x.promos),pct('% NS',x=>x.promos,NS),pct('% GMV',x=>x.promos,GMV)],true)
+    +card('Ads + Visibility',t.ads+t.vis,'warn',[amt('₹',adsVis),pct('% NS',adsVis,NS),pct('% GMV',adsVis,GMV)],true)
+    +'</div>';
+}
+
 // ── DASHBOARD ─────────────────────────────────────────
 function viewDashboard() {
   const months = monthsFor(S.portal);
@@ -822,8 +894,7 @@ function viewDashboard() {
   return '<div class="ph"><div><div class="ph-title">Dashboard</div><div class="ph-sub">'+pLabel(S.portal)+' · '+sel+'</div></div><div class="ph-right" style="gap:8px">'+pBadge(S.portal)+' '+splitToggle+' '+msel+(isAdmin?'<button class="btn btn-yellow" onclick="go(\'entry\')">+ New Month</button>':'')
 +'<button class="btn btn-outline btn-sm" onclick="exportAllPortalsCurrentMonth()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button>'
 +'</div></div>'
-  +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Total GMV</div><div class="val">₹'+fmt(t.gmv)+'</div><div class="sub">'+(mom?delta(mom.gmv,'%'):'—')+'</div><div class="abar" style="background:'+pColor(S.portal)+'"></div></div><div class="card stat"><div class="lbl">Net Sales</div><div class="val">₹'+fmt(t.netSales)+'</div><div class="sub">After '+cfg.commission+'% comm + '+cfg.tax+'% GST</div><div class="abar" style="background:var(--mint)"></div></div><div class="card stat"><div class="lbl">CM1</div><div class="val '+pc(t.cm1Pct)+'">₹'+fmt(t.cm1)+'</div><div class="sub">'+fmtPct(t.cm1Pct)+' of Net Sales · '+fmtPct(t.gmv>0?t.cm1/t.gmv*100:0)+' of GMV'+(mom?'<br>'+delta(mom.cm1Pct):'')+'</div><div class="abar" style="background:var(--blue)"></div></div><div class="card stat"><div class="lbl">CM2</div><div class="val '+pc(t.cm2Pct)+'">₹'+fmt(t.cm2)+'</div><div class="sub">'+fmtPct(t.cm2Pct)+' of Net Sales · '+fmtPct(t.gmv>0?t.cm2/t.gmv*100:0)+' of GMV'+(mom?'<br>'+delta(mom.cm2Pct):'')+'</div><div class="abar" style="background:'+(t.cm2Pct>=0?'var(--pos)':'var(--neg)')+'"></div></div></div>'
-  +'<div class="g4 mb20"><div class="card stat"><div class="lbl">Commission</div><div class="val warn">₹'+fmt(t.commission)+'</div><div class="sub">'+cfg.commission+'% of GMV</div></div><div class="card stat"><div class="lbl">Gross Margin</div><div class="val">₹'+fmt(t.grossMargin)+'</div><div class="sub">After COGS + Direct Exp</div></div><div class="card stat"><div class="lbl">Promos</div><div class="val warn">₹'+fmt(t.promos)+'</div><div class="sub">'+fmtPct(t.promosPct)+' of GMV · '+fmtPct(t.netSales>0?t.promos/t.netSales*100:0)+' of Net Sales</div></div><div class="card stat"><div class="lbl">Ads + Visibility</div><div class="val warn">₹'+fmt(t.ads+t.vis)+'</div><div class="sub">'+fmtPct(t.gmv>0?(t.ads+t.vis)/t.gmv*100:0)+' of GMV · '+fmtPct(t.netSales>0?(t.ads+t.vis)/t.netSales*100:0)+' of Net Sales</div></div></div>'
+  +kpiCards(t,sel)
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
   +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
@@ -2136,6 +2207,14 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-btn{background:var(--green);color:#fff;border:1.5px solid var(--green);font-weight:600;white-space:nowrap}
   .fs-btn:hover{opacity:.9}
   .fs-strip{display:none}
+  .kpi-grid{width:100%;border-collapse:collapse;margin-top:10px;border-top:1px solid #EEF2F1;font-size:12px}
+  .kpi-grid th{font-size:10px;color:var(--tx3);font-weight:700;text-align:right;padding:6px 0 2px;text-transform:uppercase;letter-spacing:.03em}
+  .kpi-grid td{padding:3px 0 3px 6px;text-align:right;color:#1E293B;white-space:nowrap;font-weight:500}
+  .kpi-grid td:first-child,.kpi-grid th:first-child{text-align:left;color:#64748B;font-weight:600;padding-left:0}
+  .kpi-grid tr:first-child td{padding-top:7px}
+  .kpi-grid tr.kg-now td{font-weight:700;color:#0F172A}
+  .kpi-grid td.kg-up{color:var(--pos);font-weight:600}
+  .kpi-grid td.kg-dn{color:var(--neg);font-weight:600}
   .sku-card.is-fs{position:fixed;inset:0;z-index:9999;margin:0;border-radius:0;width:100vw;height:100vh;max-width:none;display:flex;flex-direction:column;background:#fff;padding:16px 24px;box-sizing:border-box;overflow:hidden}
   .sku-card:fullscreen{width:100vw;height:100vh;background:#fff}
   .sku-card.is-fs .fs-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:10px 0 14px}
