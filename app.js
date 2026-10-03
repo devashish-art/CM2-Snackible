@@ -104,6 +104,11 @@ const S = {
   sideCollapsed: false,
   showPromoPct: false,
   showPct: false,
+  ueMode: 'single',
+  ueMonth: null,
+  ueFrom: null,
+  ueTo: null,
+  ueOpen: {},
 };
 
 async function save(explicitKey) {
@@ -537,7 +542,7 @@ function sidebar() {
   const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')" title="'+lb+'"><span class="nav-icon">'+ic+'</span><span class="sb-lbl">'+lb+'</span></div>';
   const cp=(p,ic,lb)=>'<div class="pchip '+p+(S.portal===p?' active':'')+'" onclick="setPortal(\''+p+'\')" title="'+lb+'">'+ic+'<span class="sb-lbl"> '+lb+'</span></div>';
   const tgl='<button class="sb-toggle" onclick="toggleSidebar()" title="'+(S.sideCollapsed?'Expand':'Collapse')+' sidebar">'+(S.sideCollapsed?'»':'«')+'</button>';
-  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
+  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('unit','🧮','Unit Economics')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
 }
 
 // ── SKU LEADERS ───────────────────────────────────────
@@ -2109,6 +2114,189 @@ function viewTrends(){
     +html+'<script>'+script+'<\/script>';
 }
 
+// ── UNIT ECONOMICS ────────────────────────────────────
+// Separate from CM2: every SKU (incl. NLC) goes GMV → commission → GST → Net Sales → costs → Net Earning
+
+// Auto match key: ignores grammage, brand, descriptors; same flavour + product = same SKU
+const UE_STOP = new Set(['snackible','dipsters','with','made','millet','millets','no','palm','oil','high','fibre','fiber',
+  'roasted','baked','source','of','rich','in','dietary','refined','sugar','healthy','snack','snacks','per','serve',
+  'vacuum','fried','less','supergrains','popped','maida','jaggery','creme','a','the','and','gram','grams','g','gm',
+  'piece','pieces','pc','pcs','ml','kg','pack','cheesy']);
+function ueKey(name){
+  let n=(name||'').toLowerCase();
+  n=n.replace(/\d+\s*%\s*protein\s*per\s*serve/g,' ')
+     .replace(/(high|source of|rich in)\s+protein/g,' ')
+     .replace(/khakhra/g,'khakra').replace(/piri/g,'peri')
+     .replace(/barbeque|barbecue/g,'bbq')
+     .replace(/[0-9.]+/g,' ')
+     .replace(/[^a-z]+/g,' ');
+  const toks=[...new Set(n.split(' ').filter(w=>w&&!UE_STOP.has(w)))].sort();
+  return toks.join(' ');
+}
+// Readable display name: brand and grammage stripped, descriptors after | or ( cut
+function ueDisplay(name){
+  let n=(name||'').replace(/^Snackible\s+/i,'');
+  n=n.split('|')[0].split('(')[0];
+  n=n.replace(/[\s\-]+\d+[\.\d]*\s*(g|gram|grams|piece|pieces|ml)\b.*$/i,'').trim();
+  if(/^dipsters\s*-\s*/i.test(n)) n=n.replace(/^dipsters\s*-\s*/i,'');
+  else if(n.indexOf(' - ')>0 && n.split(' - ')[0].length>12) n=n.split(' - ')[0];
+  return n.trim().replace(/\b\w/g,c=>c.toUpperCase());
+}
+
+const UE_KEYS=['gmv','qty','comm','gst','ns','cogs','de','lab','log','promos','adsvis'];
+const ueBlank=()=>{const a={};UE_KEYS.forEach(k=>a[k]=0);return a;};
+const ueAdd=(a,b)=>{UE_KEYS.forEach(k=>a[k]+=b[k]||0);};
+
+// Per SKU unit-economics rows for one portal-month
+function ueRowsFor(p,m){
+  const e=S.data[dKey(p,m)]; if(!e) return [];
+  const cfg=e.config||S.config[p];
+  const commP=(+cfg.commission||0)/100, taxP=(+cfg.tax||0)/100;
+  const deP=(+cfg.directExp||0)/100, labP=(+cfg.labour||0)/100, logP=(+cfg.logistics||0)/100;
+  const items=[...(e.skus||[]),...(e.nlcSkus||[])].map(s=>{
+    const gmv=+s.gmv||0, qty=+s.qty||0, cost=+s.cost||0;
+    const comm=gmv*commP, gross=gmv-comm, ns=gross/(1+taxP);
+    return {s, name:s.name, gmv, qty, comm, gst:gross-ns, ns, cogs:cost*qty, de:ns*deP, lab:ns*labP, log:ns*logP};
+  }).filter(x=>x.gmv>0||x.qty>0);
+  // Portal level spends (regular + NLC pools) split by the dashboard basis; SKU level values override
+  const pt=e.portalTotals||{}, nt=e.nlcTotals||{};
+  const pool={promos:(+pt.promos||0)+(+nt.promos||0), ads:(+pt.ads||0)+(+nt.ads||0), vis:(+pt.vis||0)+(+nt.vis||0)};
+  const wOf=x=>S.dashSplit==='qty'?x.qty:x.ns;
+  const totW=items.reduce((a,x)=>a+wOf(x),0);
+  items.forEach(x=>{
+    const sh=totW>0?wOf(x)/totW:0;
+    const pr=blankOrUndef(x.s.promos)?pool.promos*sh:(+x.s.promos||0);
+    const ad=blankOrUndef(x.s.ads)?pool.ads*sh:(+x.s.ads||0);
+    const vi=blankOrUndef(x.s.visibility)?pool.vis*sh:(+x.s.visibility||0);
+    x.promos=pr; x.adsvis=ad+vi;
+  });
+  return items;
+}
+
+function ueMonthsAll(){
+  return [...new Set(['blinkit','zepto','instamart'].flatMap(p=>monthsFor(p)))].sort((a,b)=>MONTHS.indexOf(a)-MONTHS.indexOf(b));
+}
+
+function ueToggle(i){
+  S.ueOpen[i]=!S.ueOpen[i];
+  document.querySelectorAll('.ue-sub-'+i).forEach(r=>r.style.display=S.ueOpen[i]?'table-row':'none');
+  const c=document.getElementById('ue-car-'+i); if(c) c.textContent=S.ueOpen[i]?'▾':'▸';
+}
+function ueToggleAll(open){
+  document.querySelectorAll('[data-ue]').forEach(el=>{
+    const i=el.getAttribute('data-ue'); if(!!S.ueOpen[i]!==open) ueToggle(i);
+  });
+}
+
+function viewUnitEconomics(){
+  const allM=ueMonthsAll();
+  if(!allM.length) return '<div class="ph"><div><div class="ph-title">Unit Economics</div></div></div><div class="card empty"><div class="eicon">🧮</div><p>No data yet.</p></div>';
+  const mode=S.ueMode||'single';
+  let selMonths=[], periodLabel='', ctrls='';
+  const btn=(on,lbl,click)=>'<button onclick="'+click+'" style="padding:5px 14px;font-size:11px;font-weight:600;border:none;cursor:pointer;font-family:Poppins,sans-serif;background:'+(on?'var(--green)':'#fff')+';color:'+(on?'#fff':'var(--tx3)')+'">'+lbl+'</button>';
+  const modeToggle='<div style="display:flex;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'
+    +btn(mode==='single','Single Month',"S.ueMode='single';render()")+btn(mode==='range','Month Range',"S.ueMode='range';render()")+'</div>';
+  const splitToggle='<div style="display:flex;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'
+    +btn(S.dashSplit==='netSales','Net Sales',"setDashSplit('netSales')")+btn(S.dashSplit==='qty','Qty Sold',"setDashSplit('qty')")+'</div>';
+  const opts=sel=>allM.map(m=>'<option value="'+m+'"'+(m===sel?' selected':'')+'>'+m+'</option>').join('');
+  if(mode==='single'){
+    const sel=(S.ueMonth&&allM.includes(S.ueMonth))?S.ueMonth:allM[allM.length-1];
+    S.ueMonth=sel; selMonths=[sel]; periodLabel=sel;
+    ctrls=modeToggle+'<select class="msel" onchange="S.ueMonth=this.value;render()">'+opts(sel)+'</select>';
+  } else {
+    const from=(S.ueFrom&&allM.includes(S.ueFrom))?S.ueFrom:allM[0];
+    const to=(S.ueTo&&allM.includes(S.ueTo))?S.ueTo:allM[allM.length-1];
+    S.ueFrom=from; S.ueTo=to;
+    const a=allM.indexOf(from), b=allM.indexOf(to);
+    selMonths=allM.slice(Math.min(a,b),Math.max(a,b)+1);
+    periodLabel=selMonths[0]+' – '+selMonths[selMonths.length-1]+' ('+selMonths.length+' months)';
+    ctrls=modeToggle+'<span style="font-size:12px;color:var(--tx3)">From</span><select class="msel" style="width:140px" onchange="S.ueFrom=this.value;render()">'+opts(from)+'</select>'
+      +'<span style="font-size:12px;color:var(--tx3)">To</span><select class="msel" style="width:140px" onchange="S.ueTo=this.value;render()">'+opts(to)+'</select>';
+  }
+
+  // Aggregate by matched SKU and portal
+  const groups={};
+  const grand=ueBlank();
+  ['blinkit','zepto','instamart'].forEach(p=>{
+    selMonths.forEach(m=>{
+      ueRowsFor(p,m).forEach(x=>{
+        const k=ueKey(x.name)||x.name;
+        if(!groups[k]) groups[k]={key:k,names:{},tot:ueBlank(),portals:{}};
+        const g=groups[k];
+        g.names[x.name]=p;
+        if(!g.portals[p]) g.portals[p]=ueBlank();
+        ueAdd(g.portals[p],x); ueAdd(g.tot,x); ueAdd(grand,x);
+      });
+    });
+  });
+  const pickName=g=>{
+    const ns=Object.keys(g.names);
+    const pref=ns.find(n=>g.names[n]==='blinkit')||ns.find(n=>g.names[n]==='zepto')||ns[0];
+    return ueDisplay(pref);
+  };
+  const list=Object.values(groups).sort((a,b)=>b.tot.gmv-a.tot.gmv);
+
+  const pu=(v,q)=>q>0?v/q:0;
+  const r2=v=>'₹'+(Math.round(v*100)/100).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const calc=a=>{
+    const cm1=a.ns-a.cogs-a.de-a.lab-a.log, net=cm1-a.promos-a.adsvis;
+    return {cm1,net,pct:a.ns>0?net/a.ns*100:0};
+  };
+  const cells=a=>{
+    const c=calc(a), q=a.qty;
+    return '<td class="r">'+fmt(q)+'</td>'
+      +'<td class="r">'+r2(pu(a.gmv,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.comm,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.gst,q))+'</td>'
+      +'<td class="r ue-key">'+r2(pu(a.ns,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.cogs,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.de,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.lab,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.log,q))+'</td>'
+      +'<td class="r ue-key">'+r2(pu(c.cm1,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.promos,q))+'</td>'
+      +'<td class="r ue-cost">'+r2(pu(a.adsvis,q))+'</td>'
+      +'<td class="r ue-net '+pc(c.net)+'">'+r2(pu(c.net,q))+'</td>'
+      +'<td class="c"><span class="pill '+pc(c.pct)+'">'+fmtPct(c.pct)+'</span></td>'
+      +'<td class="r">₹'+fmt(c.net)+'</td>';
+  };
+  const portalsOrder=['blinkit','zepto','instamart'];
+  const body=list.map((g,i)=>{
+    const open=!!S.ueOpen[i];
+    const srcTitle=Object.keys(g.names).map(n=>pLabel(g.names[n])+': '+n).join('\n').replace(/"/g,'&quot;');
+    const pCount=Object.keys(g.portals).length;
+    let h='<tr class="ue-main" data-ue="'+i+'" onclick="ueToggle('+i+')" style="cursor:pointer">'
+      +'<td title="'+srcTitle+'"><span class="ue-car" id="ue-car-'+i+'">'+(open?'▾':'▸')+'</span>'+pickName(g)+' <span class="ue-pc">'+pCount+'P</span></td>'+cells(g.tot)+'</tr>';
+    portalsOrder.forEach(p=>{
+      if(!g.portals[p]) return;
+      h+='<tr class="ue-sub ue-sub-'+i+'" style="display:'+(open?'table-row':'none')+'"><td class="ue-sub-lbl"><span class="ue-dot" style="background:'+pColor(p)+'"></span>'+pLabel(p)+'</td>'+cells(g.portals[p])+'</tr>';
+    });
+    return h;
+  }).join('');
+  const gc=calc(grand);
+  const foot='<tr class="gt"><td>All SKUs (weighted)</td>'+cells(grand)+'</tr>';
+
+  const kpi=(lbl,val,sub,cls)=>'<div class="card stat"><div class="lbl">'+lbl+'</div><div class="val '+(cls||'')+'">'+val+'</div><div class="sub">'+sub+'</div></div>';
+  const kpis='<div class="g4 mb20">'
+    +kpi('Units Sold',fmt(grand.qty),list.length+' matched SKUs across portals')
+    +kpi('Avg Selling Price',r2(pu(grand.gmv,grand.qty)),'GMV per unit')
+    +kpi('Net Realisation / Unit',r2(pu(grand.ns,grand.qty)),'After commission and GST')
+    +kpi('Net Earning / Unit',r2(pu(gc.net,grand.qty)),fmtPct(gc.pct)+' of Net Sales · ₹'+fmt(gc.net)+' total',pc(gc.net))
+    +'</div>';
+
+  const head='<tr><th>SKU</th><th class="r">Qty</th><th class="r">ASP (GMV)</th><th class="r">Commission</th><th class="r">GST</th><th class="r">Net Realisation</th>'
+    +'<th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 / Unit</th>'
+    +'<th class="r">Promos</th><th class="r">Ads + Vis</th><th class="r">Net Earning / Unit</th><th class="c">% of NS</th><th class="r">Total Net Earning</th></tr>';
+
+  return '<div class="ph"><div><div class="ph-title">Unit Economics</div><div class="ph-sub">All Portals · '+periodLabel+' · per unit</div></div>'
+    +'<div class="ph-right" style="gap:8px"><span style="font-size:11px;color:var(--tx3)">Spend split</span>'+splitToggle+ctrls+'</div></div>'
+    +kpis
+    +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
+    +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
+    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs follow the same GMV route. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
+    +'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
+}
+
 // ── AI Insights ──────────────────────────────────────
 function viewInsights() {
   const portals = ['blinkit', 'zepto', 'instamart'];
@@ -2261,6 +2449,17 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-btn{background:var(--green);color:#fff;border:1.5px solid var(--green);font-weight:600;white-space:nowrap}
   .fs-btn:hover{opacity:.9}
   .fs-strip{display:none}
+  .ue-tbl tr.ue-main:hover td{background:#F3F8F7}
+  .ue-tbl .ue-car{display:inline-block;width:16px;color:var(--green);font-weight:700}
+  .ue-tbl .ue-pc{font-size:10px;font-weight:700;color:#64748B;background:#EEF2F1;border-radius:4px;padding:1px 5px;margin-left:4px}
+  .ue-tbl tr.ue-sub td{background:#FAFCFC;font-size:13px!important;padding-top:9px!important;padding-bottom:9px!important}
+  .ue-tbl tr.ue-sub td:first-child{background:#FAFCFC;padding-left:34px!important;color:#475569}
+  .ue-tbl .ue-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+  .ue-tbl td.ue-cost{color:#64748B}
+  .ue-tbl td.ue-key{font-weight:700;color:#0F172A}
+  .ue-tbl td.ue-net{font-weight:700}
+  .ue-tbl td.ue-net.pos{color:var(--pos)}
+  .ue-tbl td.ue-net.neg{color:var(--neg)}
   .kpi-grid{width:100%;border-collapse:collapse;margin-top:10px;border-top:1px solid #EEF2F1;font-size:12px}
   .kpi-grid th{font-size:10px;color:var(--tx3);font-weight:700;text-align:right;padding:6px 0 2px;text-transform:uppercase;letter-spacing:.03em}
   .kpi-grid td{padding:3px 0 3px 6px;text-align:right;color:#1E293B;white-space:nowrap;font-weight:500}
@@ -2326,6 +2525,7 @@ function render(){
   else if(S.view==='combined')  body=viewCombined();
   else if(S.view==='trends')    body=viewTrends();
   else if(S.view==='insights')  body=viewInsights();
+  else if(S.view==='unit')      body=viewUnitEconomics();
   document.getElementById('app').innerHTML='<div class="shell">'+sidebar()+'<main class="main">'+body+'</main></div>';
   document.querySelectorAll('main script').forEach(function(s){var el=document.createElement('script');el.textContent=s.textContent;document.body.appendChild(el);});
   syncSidebarOffset();
