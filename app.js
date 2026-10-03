@@ -2077,8 +2077,8 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl th,.dash-tbl td{padding:13px 16px!important}
   .dash-tbl th:first-child,.dash-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 #D9E3E2}
   .dash-tbl thead th:first-child{z-index:3;background:#F3F8F7}
-  .dash-tbl tbody td:first-child{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;max-width:none!important;width:240px;min-width:240px;line-height:1.4;word-break:normal}
-  .dash-tbl thead th:first-child{min-width:240px}
+  .dash-tbl tbody td:first-child{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:300px!important;width:300px;min-width:300px}
+  .dash-tbl thead th:first-child{min-width:300px}
   .dash-tbl tr.gt td:first-child{background:#EEF6F5}
   .dash-tbl tr[style] td:first-child{background:inherit}
   .dash-tbl tr.promo-sub{display:none}
