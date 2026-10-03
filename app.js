@@ -2265,7 +2265,7 @@ function viewUnitEconomics(){
     const open=!!S.ueOpen[i];
     const srcTitle=Object.keys(g.names).map(n=>pLabel(g.names[n])+': '+n).join('\n').replace(/"/g,'&quot;');
     const pCount=Object.keys(g.portals).length;
-    let h='<tr class="ue-main" data-ue="'+i+'" onclick="ueToggle('+i+')" style="cursor:pointer">'
+    let h='<tr class="ue-main" data-ue="'+i+'" onclick="ueToggle('+i+')">'
       +'<td title="'+srcTitle+'"><span class="ue-car" id="ue-car-'+i+'">'+(open?'▾':'▸')+'</span>'+pickName(g)+' <span class="ue-pc">'+pCount+'P</span></td>'+cells(g.tot)+'</tr>';
     portalsOrder.forEach(p=>{
       if(!g.portals[p]) return;
@@ -2449,7 +2449,11 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-btn{background:var(--green);color:#fff;border:1.5px solid var(--green);font-weight:600;white-space:nowrap}
   .fs-btn:hover{opacity:.9}
   .fs-strip{display:none}
-  .ue-tbl tr.ue-main:hover td{background:#F3F8F7}
+  .ue-tbl tr.ue-main{cursor:pointer}
+  .dash-tbl.ue-tbl tbody tr td:first-child{background:#fff!important}
+  .dash-tbl.ue-tbl tbody tr.ue-sub td:first-child{background:#FAFCFC!important}
+  .dash-tbl.ue-tbl tbody tr.gt td:first-child{background:#EEF6F5!important}
+  .dash-tbl.ue-tbl tbody tr.ue-main:hover td{background:#F3F8F7!important}
   .ue-tbl .ue-car{display:inline-block;width:16px;color:var(--green);font-weight:700}
   .ue-tbl .ue-pc{font-size:10px;font-weight:700;color:#64748B;background:#EEF2F1;border-radius:4px;padding:1px 5px;margin-left:4px}
   .ue-tbl tr.ue-sub td{background:#FAFCFC;font-size:13px!important;padding-top:9px!important;padding-bottom:9px!important}
