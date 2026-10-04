@@ -2467,6 +2467,26 @@ function viewUnitEconomics(){
     +kpi('Net Earning / Unit',r2(pu(gc.net,grand.qty)),fmtPct(gc.pct)+' of Net Sales · ₹'+fmt(gc.net)+' total',pc(gc.net))
     +'</div>';
 
+  // Top 5 by Net Sales
+  const top=[...list].sort((a,b)=>b.tot.ns-a.tot.ns).slice(0,5);
+  const pctOf=(v,b)=>b>0?v/b*100:0;
+  const amtPct=(v,b)=>'<div class="t5-amt '+(v<0?'neg':'')+'">₹'+fmt(v)+'</div><div class="t5-sub">'+fmtPct(pctOf(v,b))+' of NS</div>';
+  const top5='<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Top 5 SKUs by Net Sales · '+periodLabel+'</div>'
+    +'<div style="font-size:11.5px;color:var(--tx3)">All portals combined · CM2 = Net Earning</div></div>'
+    +'<div class="twrap"><table class="dash-tbl t5-tbl"><thead><tr><th>SKU</th><th class="r">Qty</th><th class="r">Net Sales</th><th class="r">Gross Margin</th><th class="r">CM1</th><th class="r">Promos + Ads + Vis</th><th class="r">CM2</th><th class="r">Net Earning / Unit</th></tr></thead><tbody>'
+    +top.map((g,i)=>{
+      const a=g.tot, c=calc(a), gm=a.ns-a.cogs-a.de, mk=a.promos+a.adsvis;
+      return '<tr><td><span class="t5-rank">'+(i+1)+'</span>'+g.label+'</td>'
+        +'<td class="r">'+fmt(a.qty)+'</td>'
+        +'<td class="r"><div class="t5-amt">₹'+fmt(a.ns)+'</div><div class="t5-sub">'+fmtPct(pctOf(a.ns,grand.ns))+' of total</div></td>'
+        +'<td class="r">'+amtPct(gm,a.ns)+'</td>'
+        +'<td class="r">'+amtPct(c.cm1,a.ns)+'</td>'
+        +'<td class="r"><div class="t5-amt">₹'+fmt(mk)+'</div><div class="t5-sub">'+fmtPct(pctOf(mk,a.ns))+' of NS</div></td>'
+        +'<td class="r">'+amtPct(c.net,a.ns)+'</td>'
+        +'<td class="r"><span class="pill '+pc(c.net)+'">'+r2(pu(c.net,a.qty))+'</span></td></tr>';
+    }).join('')
+    +'</tbody></table></div></div>';
+
   const head='<tr><th>SKU</th><th class="r">Qty</th><th class="r">ASP (GMV)</th><th class="r">Commission</th><th class="r">GST</th><th class="r">Net Realisation</th>'
     +'<th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 / Unit</th>'
     +'<th class="r">Promos</th><th class="r">Ads + Vis</th><th class="r">Net Earning / Unit</th><th class="c">% of NS</th><th class="r">Total Net Earning</th></tr>';
@@ -2474,6 +2494,7 @@ function viewUnitEconomics(){
   return '<div class="ph"><div><div class="ph-title">Unit Economics</div><div class="ph-sub">All Portals · '+periodLabel+' · per unit</div></div>'
     +'<div class="ph-right" style="gap:8px"><span style="font-size:11px;color:var(--tx3)">Spend split</span>'+splitToggle+ctrls+'</div></div>'
     +kpis
+    +(top.length?top5:'')
     +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
     +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueExportWorking()">📥 Export working</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
     +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs use Qty × NLC price for gross sales, same as the dashboard. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
@@ -2633,6 +2654,12 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-btn:hover{opacity:.9}
   .fs-strip{display:none}
   .ue-tbl tr.ue-main{cursor:pointer}
+  .t5-tbl td{vertical-align:middle}
+  .t5-tbl .t5-amt{font-weight:700;color:#0F172A}
+  .t5-tbl .t5-amt.neg{color:var(--neg)}
+  .t5-tbl .t5-sub{font-size:11.5px;color:#64748B;margin-top:2px}
+  .t5-tbl .t5-rank{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#02514F;color:#fff;font-size:11px;font-weight:700;margin-right:9px}
+  .t5-tbl tbody td:first-child{background:#fff!important}
   .ue-unm{font-size:10px;font-weight:700;color:#9A5B00;background:#FFF4E5;border-radius:4px;padding:1px 6px;margin-left:6px}
   .ue-map-bar{margin:0 18px 10px;padding:8px 12px;border-radius:8px;font-size:12px;background:#F3F8F7;color:#334155;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .ue-map-bar.warn{background:#FFF8EC;color:#7A4A00}
