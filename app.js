@@ -2520,6 +2520,17 @@ function viewUnitEconomics(){
     return '<div class="t5-ins"><div class="t5-ins-h">Key takeaways</div><ul>'+pts.map(x=>'<li>'+x+'</li>').join('')+'</ul></div>';
   }
 
+  // KPI strip shown only in fullscreen
+  function ueFsStrip(){
+    const chip=(lb,val,sub,cls)=>'<div class="fs-chip"><div class="fs-chip-lb">'+lb+'</div><div class="fs-chip-val '+(cls||'')+'">'+val+'</div>'+(sub?'<div class="fs-chip-sub">'+sub+'</div>':'')+'</div>';
+    return '<div class="fs-strip"><div class="fs-meta"><span class="fs-month">All Portals · '+periodLabel+'</span></div><div class="fs-chips">'
+      +chip('Units Sold',fmt(grand.qty),list.length+' SKUs')
+      +chip('ASP',r2(pu(grand.gmv,grand.qty)),'GMV / unit')
+      +chip('Net Realisation',r2(pu(grand.ns,grand.qty)),'per unit')
+      +chip('Net Earning',r2(pu(gc.net,grand.qty)),fmtPct(gc.pct)+' of NS',pc(gc.net))
+      +'</div></div>';
+  }
+
   const head='<tr><th>SKU</th><th class="r">Qty</th><th class="r">ASP (GMV)</th><th class="r">Commission</th><th class="r">GST</th><th class="r">Net Realisation</th>'
     +'<th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 / Unit</th>'
     +'<th class="r">Promos</th><th class="r">Ads + Vis</th><th class="r">Net Earning / Unit</th><th class="c">% of NS</th><th class="r">Total Net Earning</th></tr>';
@@ -2528,10 +2539,11 @@ function viewUnitEconomics(){
     +'<div class="ph-right" style="gap:8px"><span style="font-size:11px;color:var(--tx3)">Spend split</span>'+splitToggle+ctrls+'</div></div>'
     +kpis
     +(top.length?top5:'')
-    +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
-    +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueExportWorking()">📥 Export working</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
-    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs use Qty × NLC price for gross sales, same as the dashboard. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
-    +mapBar+'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
+    +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
+    +'<div class="flex gap8"><button class="btn btn-outline btn-sm ue-hide-fs" onclick="ueExportWorking()">📥 Export working</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'
+    +ueFsStrip()
+    +'<div class="ue-hide-fs" style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs use Qty × NLC price for gross sales, same as the dashboard. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
+    +'<div class="ue-hide-fs">'+mapBar+'</div><div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
 }
 
 // ── AI Insights ──────────────────────────────────────
@@ -2729,6 +2741,7 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .sku-card.is-fs .fs-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:10px 0 14px}
   .sku-card.is-fs .twrap{flex:1;max-height:none;min-height:0}
   .sku-card.is-fs .saved-metrics{display:none}
+  .sku-card.is-fs .ue-hide-fs,.sku-card:fullscreen .ue-hide-fs{display:none!important}
   .fs-meta{display:flex;align-items:center;gap:10px}
   .fs-month{font-size:14px;font-weight:600;color:var(--tx)}
   .fs-chips{display:flex;gap:10px;flex-wrap:wrap}
