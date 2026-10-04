@@ -2207,13 +2207,13 @@ const ueAdd=(a,b)=>{UE_KEYS.forEach(k=>a[k]+=b[k]||0);};
 function ueRowsFor(p,m){
   const e=S.data[dKey(p,m)]; if(!e) return [];
   const cfg=e.config||S.config[p];
-  const commP=(+cfg.commission||0)/100, taxP=(+cfg.tax||0)/100;
-  const deP=(+cfg.directExp||0)/100, labP=(+cfg.labour||0)/100, logP=(+cfg.logistics||0)/100;
-  const items=[...(e.skus||[]),...(e.nlcSkus||[])].map(s=>{
-    const gmv=+s.gmv||0, qty=+s.qty||0, cost=+s.cost||0;
-    const comm=gmv*commP, gross=gmv-comm, ns=gross/(1+taxP);
-    return {s, name:s.name, gmv, qty, comm, gst:gross-ns, ns, cogs:cost*qty, de:ns*deP, lab:ns*labP, log:ns*logP};
-  }).filter(x=>x.gmv>0||x.qty>0);
+    // Gross / Net Sales exactly as the CM2 dashboard: NLC = Qty × NLC price (no commission), custom overrides respected
+  const mk=(s,isNLC)=>{
+    const c=calcSKU(s,cfg,isNLC,0,0,0);
+    const gmv=c.gmv, qty=c.qty, gross=c.grossSales, ns=c.netSales;
+    return {s, name:s.name, nlc:isNLC, gmv, qty, comm:gmv-gross, gst:gross-ns, ns, cogs:c.cogs, de:c.directExp, lab:c.labour, log:c.logistics};
+  };
+  const items=[...(e.skus||[]).map(s=>mk(s,false)),...(e.nlcSkus||[]).map(s=>mk(s,true))].filter(x=>x.gmv>0||x.qty>0);
   // Portal level spends (regular + NLC pools) split by the dashboard basis; SKU level values override
   const pt=e.portalTotals||{}, nt=e.nlcTotals||{};
   const pool={promos:(+pt.promos||0)+(+nt.promos||0), ads:(+pt.ads||0)+(+nt.ads||0), vis:(+pt.vis||0)+(+nt.vis||0)};
@@ -2265,7 +2265,9 @@ function ueExportWorking(){
         const mp=ueMapLookup(p,sk.name);
         const label=mp?mp.master+(mp.pack?' · '+mp.pack:''):ueDisplay(sk.name)+(ueGrams(sk.name)?' · '+ueGrams(sk.name):'')+' (unmapped)';
         const ov=v=>blankOrUndef(v)?'':(+v||0);
-        W.push({m,portal:pLabel(p),name:sk.name,label,type,gmv,qty,cost:+sk.cost||0,
+        const cust=sk.custom&&(+sk.c_gross>0||+sk.c_net>0);
+        const t2=cust?'Custom':type;
+        W.push({m,portal:pLabel(p),name:sk.name,label,type:t2,nlcPrice:type==='NLC'?(+sk.nlc_price||0):'',cGross:cust?(+sk.c_gross||0):'',cNet:cust?(+sk.c_net||0):'',gmv,qty,cost:+sk.cost||0,
           comm:(+cfg.commission||0)/100,tax:(+cfg.tax||0)/100,de:(+cfg.directExp||0)/100,lab:(+cfg.labour||0)/100,log:(+cfg.logistics||0)/100,
           pr:ov(sk.promos),ad:ov(sk.ads),vi:ov(sk.visibility)});
       };
@@ -2277,13 +2279,16 @@ function ueExportWorking(){
       'Commission','Gross Sales','Net Sales','GST','COGS','Direct Exp','Labour','Logistics','CM1',
       'Split Basis ('+(byQty?'Qty':'Net Sales')+')','Portal Basis Total','Share of Portal',
       'Promos Entered','Ads Entered','Vis Entered','Promos Pool','Ads Pool','Vis Pool',
-      'Promos Used','Ads Used','Vis Used','Net Earning','Net Earning / Unit','% of Net Sales'];
+      'Promos Used','Ads Used','Vis Used','Net Earning','Net Earning / Unit','% of Net Sales','NLC Price','Custom Gross','Custom Net'];
     const f=x=>({t:'n',f:x});
     const rows=[H];
     W.forEach((w,i)=>{
       const r=i+2;
       rows.push([w.m,w.portal,w.name,w.label,w.type,w.gmv,w.qty,w.cost,w.comm,w.tax,w.de,w.lab,w.log,
-        f('F'+r+'*I'+r), f('F'+r+'-N'+r), f('O'+r+'/(1+J'+r+')'), f('O'+r+'-P'+r), f('H'+r+'*G'+r),
+        f('F'+r+'-O'+r),
+        f('IF(E'+r+'="NLC",G'+r+'*AL'+r+',IF(E'+r+'="Custom",AM'+r+',F'+r+'*(1-I'+r+')))'),
+        f('IF(E'+r+'="Custom",AN'+r+',O'+r+'/(1+J'+r+'))'),
+        f('O'+r+'-P'+r), f('H'+r+'*G'+r),
         f('P'+r+'*K'+r), f('P'+r+'*L'+r), f('P'+r+'*M'+r), f('P'+r+'-R'+r+'-S'+r+'-T'+r+'-U'+r),
         f(byQty?'G'+r:'P'+r),
         f('SUMIFS($W$2:$W$'+last+',$A$2:$A$'+last+',A'+r+',$B$2:$B$'+last+',B'+r+')'),
@@ -2297,7 +2302,8 @@ function ueExportWorking(){
         f('IF(AB'+r+'="",AE'+r+'*Y'+r+',AB'+r+')'),
         f('V'+r+'-AF'+r+'-AG'+r+'-AH'+r),
         f('IF(G'+r+'=0,0,AI'+r+'/G'+r+')'),
-        f('IF(P'+r+'=0,0,AI'+r+'/P'+r+')')]);
+        f('IF(P'+r+'=0,0,AI'+r+'/P'+r+')'),
+        w.nlcPrice,w.cGross,w.cNet]);
     });
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(rows);
@@ -2305,7 +2311,7 @@ function ueExportWorking(){
     ws['!freeze']={xSplit:4,ySplit:1};
     for(let r=2;r<=last;r++){
       ['I','J','K','L','M','Y','AK'].forEach(c=>{ if(ws[c+r]) ws[c+r].z='0.00%'; });
-      ['F','H','N','O','P','Q','R','S','T','U','V','W','X','Z','AA','AB','AC','AD','AE','AF','AG','AH','AI','AJ'].forEach(c=>{ if(ws[c+r]) ws[c+r].z='#,##0.00'; });
+      ['F','H','N','O','P','Q','R','S','T','U','V','W','X','Z','AA','AB','AC','AD','AE','AF','AG','AH','AI','AJ','AL','AM','AN'].forEach(c=>{ if(ws[c+r]) ws[c+r].z='#,##0.00'; });
     }
     // Pools sheet
     const PH=['Month','Portal','Promos (Regular)','Promos (NLC)','Promos Pool','Ads (Regular)','Ads (NLC)','Ads Pool','Vis (Regular)','Vis (NLC)','Vis Pool'];
@@ -2332,7 +2338,9 @@ function ueExportWorking(){
     // Notes
     const notes=[['How to read this file'],
       ['Working: one row per portal listing per month. Grey inputs come from the dashboard; every other column is a formula.'],
-      ['Net Sales = (GMV − Commission) ÷ (1 + GST%). Direct Exp, Labour, Logistics = % × Net Sales. CM1 = Net Sales − COGS − DE − Labour − Logistics.'],
+      ['Regular: Gross Sales = GMV × (1 − Commission%). NLC: Gross Sales = Qty × NLC Price (column AL), no commission. Same as the CM2 dashboard.'],
+      ['Commission column = GMV − Gross Sales (for NLC this is the gap between portal GMV and what we bill). Net Sales = Gross Sales ÷ (1 + GST%).'],
+      ['Direct Exp, Labour, Logistics = % × Net Sales. CM1 = Net Sales − COGS − DE − Labour − Logistics.'],
       ['Promos / Ads / Vis: if a value is entered against the SKU (Entered columns) it is used as is.'],
       ['Otherwise SKU gets Pool × Share of Portal. Share = SKU Split Basis ÷ total Split Basis of all SKUs on that portal in that month (Regular + NLC together).'],
       ['Split basis currently: '+(byQty?'Qty sold':'Net Sales')+' (same as the toggle on the page).'],
@@ -2468,7 +2476,7 @@ function viewUnitEconomics(){
     +kpis
     +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
     +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueExportWorking()">📥 Export working</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
-    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs follow the same GMV route. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
+    +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs use Qty × NLC price for gross sales, same as the dashboard. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
     +mapBar+'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
 }
 
