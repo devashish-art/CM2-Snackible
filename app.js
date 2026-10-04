@@ -2485,7 +2485,40 @@ function viewUnitEconomics(){
         +'<td class="r">'+amtPct(c.net,a.ns)+'</td>'
         +'<td class="r"><span class="pill '+pc(c.net)+'">'+r2(pu(c.net,a.qty))+'</span></td></tr>';
     }).join('')
-    +'</tbody></table></div></div>';
+    +'</tbody></table></div>'+top5Insights()+'</div>';
+
+  // 4 auto pointers under the Top 5 table
+  function top5Insights(){
+    if(!top.length||!(grand.ns>0)) return '';
+    const R=g=>{const a=g.tot,c=calc(a);return {g,a,ns:a.ns,cm1:c.cm1,cm2:c.net,
+      cm1P:pctOf(c.cm1,a.ns),cm2P:pctOf(c.net,a.ns),mkP:pctOf(a.promos+a.adsvis,a.ns),gmP:pctOf(a.ns-a.cogs-a.de,a.ns)};};
+    const T=top.map(R), gc=calc(grand);
+    const nm=x=>'<b>'+x.g.label+'</b>';
+    const pts=[];
+    // 1. Concentration
+    const t5ns=T.reduce((s,x)=>s+x.ns,0), t5cm2=T.reduce((s,x)=>s+x.cm2,0);
+    pts.push('<b>Concentration:</b> top 5 SKUs make '+fmtPct(pctOf(t5ns,grand.ns))+' of net sales across '+list.length+' SKUs; '+nm(T[0])+' alone is '+fmtPct(pctOf(T[0].ns,grand.ns))+'.');
+    // 2. Profitability of the top 5
+    const pos=T.filter(x=>x.cm2>=0).length;
+    pts.push('<b>Profitability:</b> '+pos+' of '+T.length+' are CM2 positive. Top 5 CM2 is ₹'+fmt(t5cm2)+' ('+fmtPct(pctOf(t5cm2,t5ns))+' of their NS) vs ₹'+fmt(gc.net)+' ('+fmtPct(pctOf(gc.net,grand.ns))+') for the full portfolio.');
+    // 3. Biggest drag and cause
+    const worst=[...T].sort((a,b)=>a.cm2-b.cm2)[0];
+    if(worst.cm2<0){
+      const cause=worst.mkP>worst.cm1P
+        ? 'promos + ads + vis at '+fmtPct(worst.mkP)+' of NS exceed its CM1 of '+fmtPct(worst.cm1P)+'; spend needs to fall below '+fmtPct(worst.cm1P)+' of NS to break even'
+        : 'CM1 is already negative at '+fmtPct(worst.cm1P)+', so the issue is cost/price, not marketing';
+      pts.push('<b>Biggest drag:</b> '+nm(worst)+' loses ₹'+fmt(Math.abs(worst.cm2))+'; '+cause+'.');
+    } else {
+      const best=[...T].sort((a,b)=>b.cm2-a.cm2)[0];
+      pts.push('<b>Biggest contributor:</b> '+nm(best)+' earns ₹'+fmt(best.cm2)+' CM2 ('+fmtPct(best.cm2P)+' of NS).');
+    }
+    // 4. Margin headroom: best CM1% vs lowest gross margin %
+    const hiCm1=[...T].sort((a,b)=>b.cm1P-a.cm1P)[0], loGm=[...T].sort((a,b)=>a.gmP-b.gmP)[0];
+    pts.push('<b>Margin headroom:</b> '+nm(hiCm1)+' has the strongest CM1 at '+fmtPct(hiCm1.cm1P)+' of NS'
+      +(hiCm1.cm2<0?' but still turns negative after spend ('+fmtPct(hiCm1.mkP)+' of NS)':'')
+      +(loGm.g!==hiCm1.g?'; '+nm(loGm)+' has the thinnest gross margin at '+fmtPct(loGm.gmP)+', so pricing or COGS is the lever there':'')+'.');
+    return '<div class="t5-ins"><div class="t5-ins-h">Key takeaways</div><ul>'+pts.map(x=>'<li>'+x+'</li>').join('')+'</ul></div>';
+  }
 
   const head='<tr><th>SKU</th><th class="r">Qty</th><th class="r">ASP (GMV)</th><th class="r">Commission</th><th class="r">GST</th><th class="r">Net Realisation</th>'
     +'<th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 / Unit</th>'
@@ -2655,6 +2688,11 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .fs-strip{display:none}
   .ue-tbl tr.ue-main{cursor:pointer}
   .t5-tbl td{vertical-align:middle}
+  .t5-ins{margin:4px 18px 16px;padding:12px 16px;background:#F7FBFA;border:1px solid #DCEBE8;border-radius:10px}
+  .t5-ins-h{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#02514F;margin-bottom:6px}
+  .t5-ins ul{margin:0;padding-left:18px}
+  .t5-ins li{font-size:13px;line-height:1.6;color:#334155;margin:3px 0}
+  .t5-ins b{color:#0F172A}
   .t5-tbl .t5-amt{font-weight:700;color:#0F172A}
   .t5-tbl .t5-amt.neg{color:var(--neg)}
   .t5-tbl .t5-sub{font-size:11.5px;color:#64748B;margin-top:2px}
