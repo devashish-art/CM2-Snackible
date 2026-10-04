@@ -2244,6 +2244,113 @@ function ueToggleAll(open){
   });
 }
 
+// ── Unit Economics: Excel export with live formulas ──
+function ueExportWorking(){
+  const run=()=>{
+    const months=window.UE_SEL||[];
+    if(!months.length){ toast('Nothing to export','err'); return; }
+    const byQty=S.dashSplit==='qty';
+    const W=[], P=[];
+    // Pools sheet rows: one per portal-month
+    ['blinkit','zepto','instamart'].forEach(p=>months.forEach(m=>{
+      const e=S.data[dKey(p,m)]; if(!e) return;
+      const pt=e.portalTotals||{}, nt=e.nlcTotals||{};
+      P.push([m,pLabel(p),+pt.promos||0,+nt.promos||0,+pt.ads||0,+nt.ads||0,+pt.vis||0,+nt.vis||0]);
+    }));
+    ['blinkit','zepto','instamart'].forEach(p=>months.forEach(m=>{
+      const e=S.data[dKey(p,m)]; if(!e) return;
+      const cfg=e.config||S.config[p];
+      const add=(sk,type)=>{
+        const gmv=+sk.gmv||0, qty=+sk.qty||0; if(!gmv&&!qty) return;
+        const mp=ueMapLookup(p,sk.name);
+        const label=mp?mp.master+(mp.pack?' · '+mp.pack:''):ueDisplay(sk.name)+(ueGrams(sk.name)?' · '+ueGrams(sk.name):'')+' (unmapped)';
+        const ov=v=>blankOrUndef(v)?'':(+v||0);
+        W.push({m,portal:pLabel(p),name:sk.name,label,type,gmv,qty,cost:+sk.cost||0,
+          comm:(+cfg.commission||0)/100,tax:(+cfg.tax||0)/100,de:(+cfg.directExp||0)/100,lab:(+cfg.labour||0)/100,log:(+cfg.logistics||0)/100,
+          pr:ov(sk.promos),ad:ov(sk.ads),vi:ov(sk.visibility)});
+      };
+      (e.skus||[]).forEach(sk=>add(sk,'Regular'));
+      (e.nlcSkus||[]).forEach(sk=>add(sk,'NLC'));
+    }));
+    const n=W.length, last=n+1;
+    const H=['Month','Portal','Portal SKU','Master SKU · Pack','Type','GMV','Qty','Cost / Unit','Commission %','GST %','Direct Exp %','Labour %','Logistics %',
+      'Commission','Gross Sales','Net Sales','GST','COGS','Direct Exp','Labour','Logistics','CM1',
+      'Split Basis ('+(byQty?'Qty':'Net Sales')+')','Portal Basis Total','Share of Portal',
+      'Promos Entered','Ads Entered','Vis Entered','Promos Pool','Ads Pool','Vis Pool',
+      'Promos Used','Ads Used','Vis Used','Net Earning','Net Earning / Unit','% of Net Sales'];
+    const f=x=>({t:'n',f:x});
+    const rows=[H];
+    W.forEach((w,i)=>{
+      const r=i+2;
+      rows.push([w.m,w.portal,w.name,w.label,w.type,w.gmv,w.qty,w.cost,w.comm,w.tax,w.de,w.lab,w.log,
+        f('F'+r+'*I'+r), f('F'+r+'-N'+r), f('O'+r+'/(1+J'+r+')'), f('O'+r+'-P'+r), f('H'+r+'*G'+r),
+        f('P'+r+'*K'+r), f('P'+r+'*L'+r), f('P'+r+'*M'+r), f('P'+r+'-R'+r+'-S'+r+'-T'+r+'-U'+r),
+        f(byQty?'G'+r:'P'+r),
+        f('SUMIFS($W$2:$W$'+last+',$A$2:$A$'+last+',A'+r+',$B$2:$B$'+last+',B'+r+')'),
+        f('IF(X'+r+'=0,0,W'+r+'/X'+r+')'),
+        w.pr,w.ad,w.vi,
+        f('SUMIFS(Pools!$E:$E,Pools!$A:$A,A'+r+',Pools!$B:$B,B'+r+')'),
+        f('SUMIFS(Pools!$H:$H,Pools!$A:$A,A'+r+',Pools!$B:$B,B'+r+')'),
+        f('SUMIFS(Pools!$K:$K,Pools!$A:$A,A'+r+',Pools!$B:$B,B'+r+')'),
+        f('IF(Z'+r+'="",AC'+r+'*Y'+r+',Z'+r+')'),
+        f('IF(AA'+r+'="",AD'+r+'*Y'+r+',AA'+r+')'),
+        f('IF(AB'+r+'="",AE'+r+'*Y'+r+',AB'+r+')'),
+        f('V'+r+'-AF'+r+'-AG'+r+'-AH'+r),
+        f('IF(G'+r+'=0,0,AI'+r+'/G'+r+')'),
+        f('IF(P'+r+'=0,0,AI'+r+'/P'+r+')')]);
+    });
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=H.map((h,i)=>({wch:i===2?60:i===3?38:Math.max(12,h.length+2)}));
+    ws['!freeze']={xSplit:4,ySplit:1};
+    for(let r=2;r<=last;r++){
+      ['I','J','K','L','M','Y','AK'].forEach(c=>{ if(ws[c+r]) ws[c+r].z='0.00%'; });
+      ['F','H','N','O','P','Q','R','S','T','U','V','W','X','Z','AA','AB','AC','AD','AE','AF','AG','AH','AI','AJ'].forEach(c=>{ if(ws[c+r]) ws[c+r].z='#,##0.00'; });
+    }
+    // Pools sheet
+    const PH=['Month','Portal','Promos (Regular)','Promos (NLC)','Promos Pool','Ads (Regular)','Ads (NLC)','Ads Pool','Vis (Regular)','Vis (NLC)','Vis Pool'];
+    const prow=[PH];
+    P.forEach((x,i)=>{ const r=i+2;
+      prow.push([x[0],x[1],x[2],x[3],f('C'+r+'+D'+r),x[4],x[5],f('F'+r+'+G'+r),x[6],x[7],f('I'+r+'+J'+r)]); });
+    const wp=XLSX.utils.aoa_to_sheet(prow); wp['!cols']=PH.map(h=>({wch:Math.max(14,h.length+2)}));
+    // Summary by Master SKU
+    const labels=[...new Set(W.map(w=>w.label))].sort();
+    const SH=['Master SKU · Pack','Qty','GMV','Net Sales','CM1','Promos','Ads','Vis','Net Earning','ASP','Net Realisation / Unit','CM1 / Unit','Promos / Unit','Ads + Vis / Unit','Net Earning / Unit','% of Net Sales'];
+    const srow=[SH];
+    const sum=(col,r)=>f('SUMIFS(Working!$'+col+'$2:$'+col+'$'+last+',Working!$D$2:$D$'+last+',A'+r+')');
+    labels.forEach((l,i)=>{ const r=i+2;
+      srow.push([l,sum('G',r),sum('F',r),sum('P',r),sum('V',r),sum('AF',r),sum('AG',r),sum('AH',r),sum('AI',r),
+        f('IF(B'+r+'=0,0,C'+r+'/B'+r+')'),f('IF(B'+r+'=0,0,D'+r+'/B'+r+')'),f('IF(B'+r+'=0,0,E'+r+'/B'+r+')'),
+        f('IF(B'+r+'=0,0,F'+r+'/B'+r+')'),f('IF(B'+r+'=0,0,(G'+r+'+H'+r+')/B'+r+')'),f('IF(B'+r+'=0,0,I'+r+'/B'+r+')'),f('IF(D'+r+'=0,0,I'+r+'/D'+r+')')]); });
+    const tr=labels.length+2;
+    srow.push(['All SKUs',...['B','C','D','E','F','G','H','I'].map(c=>f('SUM('+c+'2:'+c+(tr-1)+')')),
+      f('IF(B'+tr+'=0,0,C'+tr+'/B'+tr+')'),f('IF(B'+tr+'=0,0,D'+tr+'/B'+tr+')'),f('IF(B'+tr+'=0,0,E'+tr+'/B'+tr+')'),
+      f('IF(B'+tr+'=0,0,F'+tr+'/B'+tr+')'),f('IF(B'+tr+'=0,0,(G'+tr+'+H'+tr+')/B'+tr+')'),f('IF(B'+tr+'=0,0,I'+tr+'/B'+tr+')'),f('IF(D'+tr+'=0,0,I'+tr+'/D'+tr+')')]);
+    const wsu=XLSX.utils.aoa_to_sheet(srow);
+    wsu['!cols']=SH.map((h,i)=>({wch:i===0?40:Math.max(13,h.length+2)}));
+    for(let r=2;r<=tr;r++){ 'BCDEFGHIJKLMNO'.split('').forEach(c=>{ if(wsu[c+r]) wsu[c+r].z='#,##0.00'; }); if(wsu['P'+r]) wsu['P'+r].z='0.00%'; }
+    // Notes
+    const notes=[['How to read this file'],
+      ['Working: one row per portal listing per month. Grey inputs come from the dashboard; every other column is a formula.'],
+      ['Net Sales = (GMV − Commission) ÷ (1 + GST%). Direct Exp, Labour, Logistics = % × Net Sales. CM1 = Net Sales − COGS − DE − Labour − Logistics.'],
+      ['Promos / Ads / Vis: if a value is entered against the SKU (Entered columns) it is used as is.'],
+      ['Otherwise SKU gets Pool × Share of Portal. Share = SKU Split Basis ÷ total Split Basis of all SKUs on that portal in that month (Regular + NLC together).'],
+      ['Split basis currently: '+(byQty?'Qty sold':'Net Sales')+' (same as the toggle on the page).'],
+      ['Pools: portal level Promos / Ads / Vis entered on the dashboard, Regular + NLC added together.'],
+      ['Summary: totals by Master SKU · Pack (from SKU_Map), per unit = total ÷ total qty. Should match the Unit Economics page.']];
+    const wn=XLSX.utils.aoa_to_sheet(notes); wn['!cols']=[{wch:140}];
+    XLSX.utils.book_append_sheet(wb,wsu,'Summary');
+    XLSX.utils.book_append_sheet(wb,ws,'Working');
+    XLSX.utils.book_append_sheet(wb,wp,'Pools');
+    XLSX.utils.book_append_sheet(wb,wn,'Notes');
+    const tag=months.length>1?months[0]+'_to_'+months[months.length-1]:months[0];
+    XLSX.writeFile(wb,'Snackible_Unit_Economics_'+tag.replace(/ /g,'_')+'.xlsx');
+    toast('✅ Unit Economics working exported');
+  };
+  if(typeof XLSX!=='undefined') run();
+  else { const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=run; sc.onerror=()=>toast('Failed to load XLSX library','err'); document.head.appendChild(sc); }
+}
+
 function viewUnitEconomics(){
   const allM=ueMonthsAll();
   if(!allM.length) return '<div class="ph"><div><div class="ph-title">Unit Economics</div></div></div><div class="card empty"><div class="eicon">🧮</div><p>No data yet.</p></div>';
@@ -2270,6 +2377,7 @@ function viewUnitEconomics(){
       +'<span style="font-size:12px;color:var(--tx3)">To</span><select class="msel" style="width:140px" onchange="S.ueTo=this.value;render()">'+opts(to)+'</select>';
   }
 
+  window.UE_SEL=selMonths;
   // Aggregate by matched SKU and portal
   ueLoadMap();
   const groups={}, unm={};
@@ -2359,7 +2467,7 @@ function viewUnitEconomics(){
     +'<div class="ph-right" style="gap:8px"><span style="font-size:11px;color:var(--tx3)">Spend split</span>'+splitToggle+ctrls+'</div></div>'
     +kpis
     +'<div class="card tcard sku-card"><div class="thead-row"><div class="thead-title">Per Unit Waterfall · '+periodLabel+'</div>'
-    +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
+    +'<div class="flex gap8"><button class="btn btn-outline btn-sm" onclick="ueExportWorking()">📥 Export working</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(true)">▾ Expand all</button><button class="btn btn-outline btn-sm" onclick="ueToggleAll(false)">▴ Collapse all</button></div></div>'
     +'<div style="padding:0 18px 10px;font-size:11.5px;color:var(--tx3)">GMV → commission (portal rate) → GST → Net Realisation → COGS, Direct Exp, Labour, Logistics → CM1 → Promos, Ads + Vis → Net Earning. NLC SKUs follow the same GMV route. Each pack size is its own row. Click a SKU to see each portal; hover the name to see the matched portal listings.</div>'
     +mapBar+'<div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
 }
