@@ -435,6 +435,117 @@ function exportAllPortalsCurrentMonth() {
   }
 }
 
+// ── Combined Export (one sheet per month, all 3 portals, plain values) ──
+function exportCombinedRange() {
+  const months = (window.COMB_SEL || []).filter(m => ['blinkit','zepto','instamart'].some(p => S.data[dKey(p,m)]));
+  if (!months.length) { toast('No data for selected period', 'err'); return; }
+  const portals = ['blinkit','zepto','instamart'];
+  const HEAD = ['Portal','SKU','Type','GMV','Commission','Gross Sales','GST','Net Sales','Qty','Cost/Unit','COGS','Direct Exp',
+    'Gross Margin','Labour','Logistics','CM1','CM1%','Promos','Ads','Visibility','CM2','CM2%'];
+  const PCT_COLS = [16, 21];
+  const r2 = v => Math.round((+v||0)*100)/100;
+  const p4 = v => Math.round((+v||0)*100)/10000; // % number → fraction for Excel %
+  const line = (portal, name, type, c, cost) => [portal, name, type, r2(c.gmv), r2(c.commission), r2(c.grossSales), r2(c.taxAmt), r2(c.netSales),
+    r2(c.qty), cost === '' ? '' : r2(cost), r2(c.cogs), r2(c.directExp), r2(c.grossMargin), r2(c.labour), r2(c.logistics),
+    r2(c.cm1), p4(c.cm1Pct), r2(c.promos), r2(c.ads), r2(c.vis), r2(c.cm2), p4(c.cm2Pct)];
+
+  // Per SKU rows, same allocation as totals() so subtotals tie to the Combined tab
+  function skuRows(p, e) {
+    const cfg = e.config || S.config[p];
+    const pt = e.portalTotals || {};
+    const npt = e.nlcTotals || e.portalTotals || {};
+    const splitBy = pt.splitBy || npt.splitBy || 'netSales';
+    const out = [];
+    const grp = (arr, isNLC, g) => {
+      const raw = arr.map(s => { const c = calcSKU(s, cfg, isNLC, 0, 0, 0); return splitBy === 'qty' ? (c.qty || +s.qty || 0) : (c.netSales || 0); });
+      const tw = raw.reduce((a, v) => a + v, 0);
+      arr.forEach((s, i) => {
+        const sh = tw > 0 ? raw[i] / tw : 0;
+        const c = calcSKU(s, cfg, isNLC,
+          blankOrUndef(s.ads) ? (g.ads || 0) * sh : 0,
+          blankOrUndef(s.visibility) ? (g.vis || 0) * sh : 0,
+          blankOrUndef(s.promos) ? (g.promos || 0) * sh : 0);
+        const cust = s.custom && (+s.c_gross > 0 || +s.c_net > 0);
+        out.push(line(pLabel(p), s.name, cust ? 'Custom' : (isNLC ? 'NLC' : 'Regular'), c, +s.cost || 0));
+      });
+    };
+    grp(e.skus || [], false, pt);
+    grp(e.nlcSkus || [], true, npt);
+    return out;
+  }
+  const blankAcc = () => ({gmv:0,commission:0,grossSales:0,taxAmt:0,netSales:0,qty:0,cogs:0,directExp:0,grossMargin:0,labour:0,logistics:0,cm1:0,promos:0,ads:0,vis:0,cm2:0});
+  const addAcc = (a, t) => Object.keys(a).forEach(k => a[k] += t[k] || 0);
+  const finish = a => { a.cm1Pct = a.netSales > 0 ? a.cm1/a.netSales*100 : 0; a.cm2Pct = a.netSales > 0 ? a.cm2/a.netSales*100 : 0; return a; };
+
+  function doExport() {
+    const wb = XLSX.utils.book_new();
+    const fmtSheet = (ws, nRows, pctCols, nCols) => {
+      for (let R = 1; R < nRows; R++) for (let C = 0; C < nCols; C++) {
+        const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+        if (!cell || cell.t !== 'n') continue;
+        cell.z = pctCols.includes(C) ? '0.00%' : '#,##0.00';
+      }
+    };
+
+    // Summary sheet
+    const SH = ['Month','Portal','GMV','Net Sales','Gross Margin','CM1','CM1% NS','CM1% GMV','Promos','Ads+Vis','CM2','CM2% NS','CM2% GMV'];
+    const sRow = (m, lbl, t) => [m, lbl, r2(t.gmv), r2(t.netSales), r2(t.grossMargin), r2(t.cm1),
+      t.netSales > 0 ? r2(t.cm1/t.netSales*100)/100 : 0, t.gmv > 0 ? r2(t.cm1/t.gmv*100)/100 : 0,
+      r2(t.promos), r2(t.ads + t.vis), r2(t.cm2),
+      t.netSales > 0 ? r2(t.cm2/t.netSales*100)/100 : 0, t.gmv > 0 ? r2(t.cm2/t.gmv*100)/100 : 0];
+    const summary = [SH];
+    const range = blankAcc();
+    const monthSheets = [];
+
+    months.forEach(m => {
+      const aoa = [HEAD];
+      const monthAcc = blankAcc();
+      portals.forEach(p => {
+        const e = S.data[dKey(p, m)]; if (!e) return;
+        const t = totals(e.skus, e.nlcSkus, e.config || S.config[p], e.portalTotals, e.nlcTotals);
+        skuRows(p, e).forEach(r => aoa.push(r));
+        aoa.push(line(pLabel(p), '▶ ' + pLabel(p) + ' Total', '', t, ''));
+        aoa.push([]);
+        addAcc(monthAcc, t);
+        summary.push(sRow(m, pLabel(p), t));
+      });
+      finish(monthAcc);
+      aoa.push(line('All Portals', '▶ GRAND TOTAL', '', monthAcc, ''));
+      summary.push(sRow(m, 'All Portals', monthAcc));
+      summary.push([]);
+      addAcc(range, monthAcc);
+      monthSheets.push([m, aoa]);
+    });
+    if (months.length > 1) summary.push(sRow(months[0] + ' – ' + months[months.length-1], 'All Portals (Range)', finish(range)));
+
+    const ws0 = XLSX.utils.aoa_to_sheet(summary);
+    fmtSheet(ws0, summary.length, [6,7,11,12], SH.length);
+    ws0['!cols'] = [{wch:30},{wch:20},...SH.slice(2).map(h => ({wch:Math.max(13, h.length+2)}))];
+    XLSX.utils.book_append_sheet(wb, ws0, 'Combined');
+
+    monthSheets.forEach(([m, aoa]) => {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      fmtSheet(ws, aoa.length, PCT_COLS, HEAD.length);
+      ws['!cols'] = [{wch:12},{wch:60},{wch:10},...HEAD.slice(3).map(h => ({wch:Math.max(12, h.length+2)}))];
+      ws['!freeze'] = {xSplit:2, ySplit:1};
+      XLSX.utils.book_append_sheet(wb, ws, m.slice(0, 31));
+    });
+
+    const tag = months.length > 1 ? months[0] + '_to_' + months[months.length-1] : months[0];
+    XLSX.writeFile(wb, 'Snackible_CM2_Combined_' + tag.replace(/ /g, '_') + '.xlsx');
+    toast('✅ Exported ' + months.length + ' month' + (months.length > 1 ? 's' : ''));
+  }
+
+  if (typeof XLSX !== 'undefined') doExport();
+  else {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = doExport;
+    s.onerror = () => toast('Failed to load XLSX library', 'err');
+    document.head.appendChild(s);
+  }
+}
+
 // ── Sidebar ───────────────────────────────────────────
 function sidebar() {
   const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')" title="'+lb+'"><span class="nav-icon">'+ic+'</span><span class="sb-lbl">'+lb+'</span></div>';
@@ -1418,7 +1529,7 @@ function viewCombined(){
     const sel=(S.month&&allM.includes(S.month))?S.month:allM[allM.length-1];
     S.month=sel; selMonths=[sel]; periodLabel=sel;
     const msel='<select class="msel" onchange="S.month=this.value;render()">'+allM.map(m=>'<option value="'+m+'"'+(m===sel?' selected':'')+'>'+m+'</option>').join('')+'</select>';
-    headerSub='<div class="ph-right" style="gap:8px"><span class="pbadge combined">🔀 All Portals</span>'+modeToggle+' '+msel+'</div>';
+    headerSub='<div class="ph-right" style="gap:8px"><span class="pbadge combined">🔀 All Portals</span>'+modeToggle+' '+msel+'<button class="btn btn-outline btn-sm" onclick="exportCombinedRange()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button>'+'</div>';
   } else {
     const from=S.combineFrom&&allM.includes(S.combineFrom)?S.combineFrom:allM[0];
     const to=S.combineTo&&allM.includes(S.combineTo)?S.combineTo:allM[allM.length-1];
@@ -1427,8 +1538,9 @@ function viewCombined(){
     periodLabel=from+' – '+to+' ('+selMonths.length+' months)';
     const fsel='<select class="msel" onchange="S.combineFrom=this.value;render()" style="width:130px">'+allM.map(m=>'<option value="'+m+'"'+(m===from?' selected':'')+'>'+m+'</option>').join('')+'</select>';
     const tsel='<select class="msel" onchange="S.combineTo=this.value;render()" style="width:130px">'+allM.map(m=>'<option value="'+m+'"'+(m===to?' selected':'')+'>'+m+'</option>').join('')+'</select>';
-    headerSub='<div class="ph-right" style="gap:8px"><span class="pbadge combined">🔀 All Portals</span>'+modeToggle+'<span style="font-size:12px;color:var(--tx3)">From</span>'+fsel+'<span style="font-size:12px;color:var(--tx3)">To</span>'+tsel+'</div>';
+    headerSub='<div class="ph-right" style="gap:8px"><span class="pbadge combined">🔀 All Portals</span>'+modeToggle+'<span style="font-size:12px;color:var(--tx3)">From</span>'+fsel+'<span style="font-size:12px;color:var(--tx3)">To</span>'+tsel+'<button class="btn btn-outline btn-sm" onclick="exportCombinedRange()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button>'+'</div>';
   }
+  window.COMB_SEL=selMonths;
   const tMap={};
   portals.forEach(p=>{
     const acc={gmv:0,netSales:0,grossSales:0,grossMargin:0,cm1:0,cm2:0,promos:0,ads:0,vis:0,cogs:0,directExp:0,labour:0,logistics:0};
