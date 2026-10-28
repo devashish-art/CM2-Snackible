@@ -111,18 +111,49 @@ const S = {
   ueOpen: {},
 };
 
-async function save(explicitKey) {
-  // Save config + current portal-month entry as separate keys to avoid 50KB limit
+// Saves one chunk. Tries POST first (no size limit), falls back to GET for older backends.
+// GET puts the whole month in the URL, which fails silently once a month has many SKUs.
+async function saveChunk(chunkKey, obj) {
+  const payload = JSON.stringify(obj);
+  const parse = async r => { const t = await r.text(); try { return JSON.parse(t); } catch (e) { return { _raw: t }; } };
   try {
-    const portal = S.portal;
-    const key    = explicitKey || dKey(portal, S.month);
-    const entry  = S.data[key];
-    if (!key || !entry) return;
-    // Save this portal-month entry
-    await fetch(SHEET_IMPORT_URL + '?action=saveChunk&chunkKey=' + encodeURIComponent('cm2_chunk_' + key) + '&payload=' + encodeURIComponent(JSON.stringify(entry)), { cache: 'no-store' });
-    // Save config separately
-    await fetch(SHEET_IMPORT_URL + '?action=saveChunk&chunkKey=cm2_config&payload=' + encodeURIComponent(JSON.stringify(S.config)), { cache: 'no-store' });
-  } catch(e) { console.warn('save failed', e); }
+    const r = await fetch(SHEET_IMPORT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify({ action:'saveChunk', chunkKey, payload }) });
+    const j = await parse(r);
+    if (r.ok && !j._raw && !j.error) return { ok:true, via:'POST' };
+  } catch (e) {}
+  try {
+    const url = SHEET_IMPORT_URL + '?action=saveChunk&chunkKey=' + encodeURIComponent(chunkKey) + '&payload=' + encodeURIComponent(payload);
+    const r = await fetch(url, { cache:'no-store' });
+    const j = await parse(r);
+    if (!r.ok) return { ok:false, err:'Server refused the save (HTTP ' + r.status + ', ' + Math.round(url.length / 1024) + ' KB request). Add doPost to the Apps Script.' };
+    if (j.error) return { ok:false, err:String(j.error) };
+    return { ok:true, via:'GET' };
+  } catch (e) { return { ok:false, err:String(e.message || e) }; }
+}
+// Fingerprint used to confirm the server really holds what was saved
+function entrySig(e) {
+  const all = [...((e && e.skus) || []), ...((e && e.nlcSkus) || [])];
+  const s = k => Math.round(all.reduce((a, x) => a + (+x[k] || 0), 0));
+  const pt = (e && e.portalTotals) || {}, nt = (e && e.nlcTotals) || {};
+  return [all.length, s('gmv'), s('qty'), s('promos'), s('ads'), s('visibility'), +pt.promos || 0, +pt.ads || 0, +pt.vis || 0, +nt.promos || 0, +nt.ads || 0, +nt.vis || 0].join('|');
+}
+async function save(explicitKey) {
+  // Config + each portal-month entry are separate chunks to stay under the 50KB cell limit
+  const key   = explicitKey || dKey(S.portal, S.month);
+  const entry = S.data[key];
+  if (!key || !entry) return { ok:false, err:'Nothing to save' };
+  const a = await saveChunk('cm2_chunk_' + key, entry);
+  if (!a.ok) return a;
+  const b = await saveChunk('cm2_config', S.config);
+  if (!b.ok) return b;
+  // Read back and compare, so a silent server failure can never pass as saved
+  try {
+    const r = await (await fetch(SHEET_IMPORT_URL + '?action=loadAllChunks&t=' + Date.now(), { cache:'no-store' })).json();
+    const got = r && r.data && r.data[key];
+    if (!got) return { ok:false, err:'Saved month not found on the server after saving' };
+    if (entrySig(got) !== entrySig(entry)) return { ok:false, err:'Server copy does not match what you entered (saved via ' + a.via + ')' };
+  } catch (e) { return { ok:true, via:a.via, unverified:true }; }
+  return { ok:true, via:a.via };
 }
 
 async function load() {
@@ -1511,7 +1542,13 @@ function saveEntry(){
   }));
   if(!vs.length&&!vn.length){toast('Enter at least one SKU with data','err');return;}
   S.data[dKey(S.portal,month)]={skus:vs,nlcSkus:vn,portalTotals:JSON.parse(JSON.stringify(ES.portalTotals)),nlcTotals:JSON.parse(JSON.stringify(ES.nlcTotals)),config:JSON.parse(JSON.stringify(S.config[S.portal])),saved:new Date().toISOString()};
-  save(dKey(S.portal,month)).then(() => { S.month=month; toast('✅ '+pLabel(S.portal)+' · '+month+' saved'); go('dashboard'); });
+  toast('Saving…');
+  save(dKey(S.portal,month)).then(res => {
+    S.month=month;
+    if(!res.ok){ console.error('CM2 save failed', res.err); toast('❌ Not saved: '+res.err,'err'); alert('NOT SAVED to server\n\n'+res.err+'\n\nYour entries are still on screen. Fix the backend and click Save again.'); return; }
+    toast('✅ '+pLabel(S.portal)+' · '+month+' saved'+(res.unverified?' (could not verify)':''));
+    go('dashboard');
+  });
 }
 
 // ── COMBINED ──────────────────────────────────────────
@@ -2669,7 +2706,8 @@ ${question}`;
 function deleteMonth(month){
   if(!confirm('Delete '+pLabel(S.portal)+' · '+month+'? This cannot be undone.')) return;
   delete S.data[dKey(S.portal,month)];
-  persist();
+  // persist() never existed, so Delete Month used to crash; delete the server chunk instead
+  fetch(SHEET_IMPORT_URL + '?action=deleteChunk&chunkKey=' + encodeURIComponent('cm2_chunk_' + dKey(S.portal,month)), { cache: 'no-store' }).catch(()=>{});
   S.month=null;
   render();
   toast('🗑 Deleted '+pLabel(S.portal)+' · '+month);
