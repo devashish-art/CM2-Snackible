@@ -14,7 +14,7 @@ const MONTHS = [
 
 const DEFAULT_CONFIG = {
   blinkit:   { commission:35, tax:5, directExp:2.90, labour:2.00, logistics:8.00 },
-  zepto:     { commission:35, tax:5, directExp:2.90, labour:2.00, logistics:8.00 },
+  zepto:     { commission:30, tax:5, directExp:2.90, labour:2.00, logistics:8.00 },
   instamart: { commission:35, tax:5, directExp:2.90, labour:2.00, logistics:8.00 },
 };
 
