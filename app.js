@@ -109,6 +109,12 @@ const S = {
   ueFrom: null,
   ueTo: null,
   ueOpen: {},
+  paMode: 'single',
+  paMonth: null,
+  paFrom: null,
+  paTo: null,
+  paLabel: null,
+  paOpen: {},
 };
 
 // Saves one chunk. Tries POST first (no size limit), falls back to GET for older backends.
@@ -582,7 +588,7 @@ function sidebar() {
   const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')" title="'+lb+'"><span class="nav-icon">'+ic+'</span><span class="sb-lbl">'+lb+'</span></div>';
   const cp=(p,ic,lb)=>'<div class="pchip '+p+(S.portal===p?' active':'')+'" onclick="setPortal(\''+p+'\')" title="'+lb+'">'+ic+'<span class="sb-lbl"> '+lb+'</span></div>';
   const tgl='<button class="sb-toggle" onclick="toggleSidebar()" title="'+(S.sideCollapsed?'Expand':'Collapse')+' sidebar">'+(S.sideCollapsed?'»':'«')+'</button>';
-  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('unit','🧮','Unit Economics')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
+  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('pa','🎯','Proj vs Actual')+nv('unit','🧮','Unit Economics')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
 }
 
 // ── SKU LEADERS ───────────────────────────────────────
@@ -2593,6 +2599,239 @@ function viewUnitEconomics(){
     +'<div class="ue-hide-fs">'+mapBar+'</div><div class="twrap"><table class="dash-tbl ue-tbl"><thead>'+head+'</thead><tbody>'+(body||emptyRow(16,'No SKUs'))+foot+'</tbody></table></div></div>';
 }
 
+// ── PROJECTED VS ACTUAL ───────────────────────────────
+// Projections come from the proj_ chunks saved by the Projections app; actuals use the same maths as totals()
+const PA_PORTALS = ['blinkit','zepto','instamart'];
+const PA_RATES   = { blinkit:35, zepto:30, instamart:35 };
+const PA_METRICS = [
+  { k:'gmv',    lb:'GMV',       cost:false },
+  { k:'ns',     lb:'Net Sales', cost:false },
+  { k:'promos', lb:'Promos',    cost:true  },
+  { k:'adsVis', lb:'Ads + Vis', cost:true  },
+  { k:'cm2',    lb:'CM2',       cost:false },
+];
+const paBlank = () => ({ gmv:0, ns:0, promos:0, adsVis:0, cm2:0 });
+const paAdd   = (a,b) => { PA_METRICS.forEach(m => { a[m.k] += +b[m.k] || 0; }); return a; };
+
+function paVersions(){
+  const out = {};
+  Object.keys(S.data).forEach(k => {
+    if (!k.startsWith('proj_')) return;
+    const c = S.data[k];
+    if (!c || !c.month || !c.portal || !c.portalSnap) return;
+    const lbl = c.label || 'Base Case';
+    if (!out[c.month]) out[c.month] = {};
+    if (!out[c.month][lbl]) out[c.month][lbl] = {};
+    out[c.month][lbl][c.portal] = c.portalSnap;
+  });
+  return out;
+}
+function paProjPortal(sn){ return { gmv:+sn.gmv||0, ns:+sn.ns||0, promos:+sn.promos||0, adsVis:+sn.ads||0, cm2:+sn.cm2||0 }; }
+function paActualPortal(p,m){
+  const e = S.data[dKey(p,m)]; if (!e) return null;
+  const t = totals(e.skus, e.nlcSkus, e.config||S.config[p], e.portalTotals, e.nlcTotals);
+  return { gmv:t.gmv, ns:t.netSales, promos:t.promos, adsVis:t.ads+t.vis, cm2:t.cm2 };
+}
+// SKU actuals with the same spend allocation as totals()
+function paActualSkus(p,m){
+  const e = S.data[dKey(p,m)]; if (!e) return [];
+  const cfg = e.config||S.config[p], pt = e.portalTotals||{}, npt = e.nlcTotals||e.portalTotals||{};
+  const splitBy = pt.splitBy||npt.splitBy||'netSales';
+  const out = [];
+  const grp = (arr,isNLC,g) => {
+    const raw = arr.map(s => { const c = calcSKU(s,cfg,isNLC,0,0,0); return splitBy==='qty' ? (c.qty||+s.qty||0) : (c.netSales||0); });
+    const tw = raw.reduce((a,v)=>a+v,0);
+    arr.forEach((s,i) => {
+      const sh = tw>0 ? raw[i]/tw : 0;
+      const c = calcSKU(s,cfg,isNLC,
+        blankOrUndef(s.ads)?(g.ads||0)*sh:0,
+        blankOrUndef(s.visibility)?(g.vis||0)*sh:0,
+        blankOrUndef(s.promos)?(g.promos||0)*sh:0);
+      out.push({ name:s.name, isNLC, gmv:c.gmv, ns:c.netSales, promos:c.promos, adsVis:c.ads+c.vis, cm2:c.cm2 });
+    });
+  };
+  grp(e.skus||[],false,pt);
+  grp(e.nlcSkus||[],true,npt);
+  return out;
+}
+const paSkuKey = (n,isNLC) => (isNLC?'n|':'r|')+ueNorm(n);
+
+// Compares only portal-months present on both sides, so totals stay like for like
+function paModel(months,label,vers){
+  const m = { months:[], portals:{}, tot:{proj:paBlank(),act:paBlank()}, missing:[], rates:[] };
+  PA_PORTALS.forEach(p => { m.portals[p] = { proj:paBlank(), act:paBlank(), pairs:0, skuMap:{}, skuMonths:0 }; });
+  months.forEach(mo => {
+    const row = { month:mo, proj:paBlank(), act:paBlank(), pairs:0, note:[] };
+    const v = (vers[mo]||{})[label]||{};
+    PA_PORTALS.forEach(p => {
+      const sn = v[p], act = paActualPortal(p,mo);
+      if (!sn && !act) return;
+      if (!sn) { row.note.push(pLabel(p)+': no '+label); m.missing.push(pLabel(p)+' · '+mo+': no '+label); return; }
+      if (!act) { row.note.push(pLabel(p)+': no actuals'); m.missing.push(pLabel(p)+' · '+mo+': no actuals'); return; }
+      const pr = paProjPortal(sn), P = m.portals[p];
+      paAdd(row.proj,pr); paAdd(row.act,act); paAdd(P.proj,pr); paAdd(P.act,act);
+      paAdd(m.tot.proj,pr); paAdd(m.tot.act,act);
+      row.pairs++; P.pairs++;
+      const e = S.data[dKey(p,mo)], rate = +((e.config||S.config[p]).commission);
+      if (rate !== PA_RATES[p]) m.rates.push(pLabel(p)+' · '+mo+' actuals use '+rate+'%, projection uses '+PA_RATES[p]+'%');
+      const skus = Array.isArray(sn.skus) ? sn.skus : [];
+      if (!skus.length) return;
+      P.skuMonths++;
+      skus.forEach(s => {
+        const k = paSkuKey(s.name,s.isNLC);
+        if (!P.skuMap[k]) P.skuMap[k] = { name:s.name, isNLC:!!s.isNLC, proj:paBlank(), act:paBlank(), hasP:false, hasA:false };
+        paAdd(P.skuMap[k].proj,{ gmv:s.gmv, ns:s.netSales, promos:s.promos, adsVis:s.adsVis, cm2:s.cm2 });
+        P.skuMap[k].hasP = true;
+      });
+      paActualSkus(p,mo).forEach(s => {
+        const k = paSkuKey(s.name,s.isNLC);
+        if (!P.skuMap[k]) P.skuMap[k] = { name:s.name, isNLC:s.isNLC, proj:paBlank(), act:paBlank(), hasP:false, hasA:false };
+        paAdd(P.skuMap[k].act,s);
+        P.skuMap[k].hasA = true;
+      });
+    });
+    m.months.push(row);
+  });
+  return m;
+}
+function paVarData(proj,act,metric,nsP,nsA){
+  const d = act-proj;
+  const pct = proj ? d/Math.abs(proj)*100 : null;
+  const good = d===0 ? null : (metric.cost ? d<0 : d>0);
+  const pp = (nsP>0&&nsA>0) ? act/nsA*100-proj/nsP*100 : null;
+  return { d, pct, pp, good, cls: good===null?'':(good?'pa-good':'pa-bad') };
+}
+const paSign  = v => (v>0?'+':v<0?'-':'');
+const paSignL = v => paSign(v)+fmtL(Math.abs(v));
+function paCells(proj,act,hasP,hasA){
+  return PA_METRICS.map(m => {
+    const pv = hasP===false ? '—' : fmtL(proj[m.k]);
+    const av = hasA===false ? '—' : fmtL(act[m.k]);
+    let vc = '<td class="r">—</td>';
+    if (hasP!==false && hasA!==false) {
+      const x = paVarData(proj[m.k],act[m.k],m,proj.ns,act.ns);
+      const sub = m.k==='cm2'
+        ? (x.pp===null?'—':paSign(x.pp)+Math.abs(x.pp).toFixed(2)+'pp')
+        : (x.pct===null?'—':paSign(x.pct)+Math.abs(x.pct).toFixed(1)+'%');
+      vc = '<td class="r '+x.cls+'">'+paSignL(x.d)+'<small>'+sub+'</small></td>';
+    }
+    return '<td class="r pa-start">'+pv+'</td><td class="r">'+av+'</td>'+vc;
+  }).join('');
+}
+function paToggle(p){
+  S.paOpen[p] = !S.paOpen[p];
+  document.querySelectorAll('.pa-sub-'+p).forEach(r => { r.style.display = S.paOpen[p] ? 'table-row' : 'none'; });
+  const c = document.getElementById('pa-car-'+p); if (c) c.textContent = S.paOpen[p] ? '▾' : '▸';
+}
+function paHead(first){
+  const g = PA_METRICS.map(m => '<th class="pa-grp" colspan="3">'+m.lb+'</th>').join('');
+  const s = PA_METRICS.map(() => '<th class="r pa-start">Proj</th><th class="r">Actual</th><th class="r">Var</th>').join('');
+  return '<thead><tr><th>'+first+'</th>'+g+'</tr><tr><th></th>'+s+'</tr></thead>';
+}
+
+function viewProjVsActual(){
+  const vers = paVersions();
+  const allM = MONTHS.filter(m => vers[m]);
+  if (!allM.length) return '<div class="ph"><div><div class="ph-title">Projected vs Actual</div></div></div><div class="card empty"><div class="eicon">🎯</div><p>No saved projections yet.</p></div>';
+  const mode = S.paMode||'single';
+  const opts = sel => allM.map(m => '<option value="'+m+'"'+(m===sel?' selected':'')+'>'+m+'</option>').join('');
+  const btn = (on,l,c) => '<button onclick="'+c+'" style="padding:5px 14px;font-size:11px;font-weight:600;border:none;cursor:pointer;font-family:Poppins,sans-serif;background:'+(on?'var(--green)':'#fff')+';color:'+(on?'#fff':'var(--tx3)')+'">'+l+'</button>';
+  const toggle = '<div style="display:flex;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'+btn(mode==='single','Single Month',"S.paMode='single';render()")+btn(mode==='range','Month Range',"S.paMode='range';render()")+'</div>';
+  let months, ctrls, period;
+  if (mode==='single') {
+    const sel = (S.paMonth&&allM.includes(S.paMonth)) ? S.paMonth : allM[allM.length-1];
+    S.paMonth = sel; months = [sel]; period = sel;
+    ctrls = '<select class="msel" onchange="S.paMonth=this.value;render()">'+opts(sel)+'</select>';
+  } else {
+    const from = (S.paFrom&&allM.includes(S.paFrom)) ? S.paFrom : allM[0];
+    const to   = (S.paTo&&allM.includes(S.paTo)) ? S.paTo : allM[allM.length-1];
+    S.paFrom = from; S.paTo = to;
+    const a = MONTHS.indexOf(from), b = MONTHS.indexOf(to);
+    months = MONTHS.slice(Math.min(a,b),Math.max(a,b)+1).filter(m => vers[m]||PA_PORTALS.some(p=>S.data[dKey(p,m)]));
+    period = months[0]+' – '+months[months.length-1];
+    ctrls = '<span style="font-size:12px;color:var(--tx3)">From</span><select class="msel" style="width:140px" onchange="S.paFrom=this.value;render()">'+opts(from)+'</select>'
+      +'<span style="font-size:12px;color:var(--tx3)">To</span><select class="msel" style="width:140px" onchange="S.paTo=this.value;render()">'+opts(to)+'</select>';
+  }
+  const labels = [...new Set(months.flatMap(m => Object.keys(vers[m]||{})))].sort();
+  const defLabel = labels.find(l => l.toLowerCase()==='base case') || labels[0] || 'Base Case';
+  const label = labels.includes(S.paLabel) ? S.paLabel : defLabel;
+  S.paLabel = label;
+  const lblSel = '<select class="msel" style="width:140px" onchange="S.paLabel=this.value;render()">'+labels.map(l=>'<option value="'+l.replace(/"/g,'&quot;')+'"'+(l===label?' selected':'')+'>'+l+'</option>').join('')+'</select>';
+  const m = paModel(months,label,vers);
+  window.PA_CTX = { months, label, period, model:m };
+  const hdr = '<div class="ph"><div><div class="ph-title">Projected vs Actual</div><div class="ph-sub">All Portals · '+period+' · '+label+'</div></div>'
+    +'<div class="ph-right" style="gap:8px;flex-wrap:wrap">'+toggle+ctrls+lblSel
+    +'<button class="btn btn-outline btn-sm" onclick="paExport()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button></div></div>';
+
+  const pairs = PA_PORTALS.reduce((a,p)=>a+m.portals[p].pairs,0);
+  const bars = [];
+  if (m.rates.length) bars.push('<div class="ue-map-bar warn" style="margin:0 0 10px">Commission mismatch: '+m.rates.join(' | ')+'. Fix the actuals rate in Enter Data for a like for like view.</div>');
+  if (m.missing.length) bars.push('<div class="ue-map-bar warn" style="margin:0 0 10px">Excluded from totals: '+m.missing.join(' | ')+'</div>');
+  if (!pairs) return hdr+bars.join('')+'<div class="card empty"><div class="eicon">🎯</div><p>No month here has both '+label+' and actuals.</p></div>';
+
+  const T = m.tot;
+  const kpis = '<div class="pa-kpis mb20">'+PA_METRICS.map(x => {
+    const v = paVarData(T.proj[x.k],T.act[x.k],x,T.proj.ns,T.act.ns);
+    const line = x.k==='cm2'
+      ? (v.pp===null?'—':paSign(v.pp)+Math.abs(v.pp).toFixed(2)+'pp · '+fmtPct(T.act.ns>0?T.act.cm2/T.act.ns*100:0)+' vs '+fmtPct(T.proj.ns>0?T.proj.cm2/T.proj.ns*100:0))
+      : (v.pct===null?'—':paSign(v.pct)+Math.abs(v.pct).toFixed(1)+'%');
+    return '<div class="card stat"><div class="lbl">'+x.lb+'</div><div class="val" style="font-size:20px">'+fmtL(T.act[x.k])+'</div><div class="pa-kpi-p">Proj '+fmtL(T.proj[x.k])+'</div><div class="pa-kpi-v '+v.cls+'">'+line+'</div></div>';
+  }).join('')+'</div>';
+
+  const portalRows = PA_PORTALS.map(p => {
+    const P = m.portals[p]; if (!P.pairs) return '';
+    const open = !!S.paOpen[p], disp = open?'table-row':'none';
+    let h = '<tr class="pa-main" onclick="paToggle(\''+p+'\')"><td><span id="pa-car-'+p+'" style="color:var(--green);font-weight:700;margin-right:6px">'+(open?'▾':'▸')+'</span>'+pLabel(p)+'</td>'+paCells(P.proj,P.act)+'</tr>';
+    if (P.skuMonths < P.pairs) h += '<tr class="pa-sub pa-note pa-sub-'+p+'" style="display:'+disp+'"><td colspan="16">Saved before SKU rows were stored. Re-pull and re-save in Projections to see SKUs'+(P.skuMonths?' for all months. SKUs below cover only the newer saves.':'.')+'</td></tr>';
+    Object.values(P.skuMap).sort((a,b)=>Math.max(b.act.ns,b.proj.ns)-Math.max(a.act.ns,a.proj.ns)).forEach(s => {
+      h += '<tr class="pa-sub pa-sub-'+p+'" style="display:'+disp+'"><td title="'+String(s.name).replace(/"/g,'&quot;')+'">'+(s.isNLC?'<span class="ntag">NLC</span> ':'')+shortN(s.name)+'</td>'+paCells(s.proj,s.act,s.hasP,s.hasA)+'</tr>';
+    });
+    return h;
+  }).join('');
+  const portalTbl = '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Portal Variance · '+period+'</div><div style="font-size:11.5px;color:var(--tx3)">Click a portal for SKUs · Var = Actual − Proj</div></div>'
+    +'<div class="twrap"><table class="dash-tbl pa-tbl">'+paHead('Portal')+'<tbody>'+portalRows
+    +'<tr class="gt"><td>Total</td>'+paCells(T.proj,T.act)+'</tr></tbody></table></div></div>';
+
+  const monthTbl = mode!=='range' ? '' : '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Month by Month · '+label+'</div></div>'
+    +'<div class="twrap"><table class="dash-tbl pa-tbl">'+paHead('Month')+'<tbody>'
+    +m.months.map(r => r.pairs
+      ? '<tr><td>'+r.month+(r.note.length?' <span class="ue-unm" title="'+r.note.join(', ')+'">Partial</span>':'')+'</td>'+paCells(r.proj,r.act)+'</tr>'
+      : '<tr class="pa-miss"><td>'+r.month+'</td><td colspan="15" style="text-align:center">'+(r.note.join(', ')||'No '+label+' or actuals')+'</td></tr>').join('')
+    +'<tr class="gt"><td>Total</td>'+paCells(T.proj,T.act)+'</tr></tbody></table></div></div>';
+
+  return hdr+bars.join('')+kpis+monthTbl+portalTbl;
+}
+
+function paExport(){
+  const ctx = window.PA_CTX; if (!ctx) return;
+  const run = () => {
+    const m = ctx.model, r2 = v => Math.round((+v||0)*100)/100;
+    const head = first => { const h = first.slice(); PA_METRICS.forEach(x => h.push(x.lb+' Proj',x.lb+' Actual',x.lb+' Var')); h.push('CM2% Proj','CM2% Actual','CM2% Var (pp)'); return h; };
+    const vals = (pr,ac,hasP,hasA) => {
+      const o = [];
+      PA_METRICS.forEach(x => o.push(hasP===false?'':r2(pr[x.k]), hasA===false?'':r2(ac[x.k]), (hasP===false||hasA===false)?'':r2(ac[x.k]-pr[x.k])));
+      const cp = pr.ns>0?pr.cm2/pr.ns*100:0, ca = ac.ns>0?ac.cm2/ac.ns*100:0;
+      o.push(hasP===false?'':r2(cp), hasA===false?'':r2(ca), (hasP===false||hasA===false)?'':r2(ca-cp));
+      return o;
+    };
+    const wb = XLSX.utils.book_new();
+    const pr = [head(['Portal'])];
+    PA_PORTALS.forEach(p => { const P = m.portals[p]; if (P.pairs) pr.push([pLabel(p),...vals(P.proj,P.act)]); });
+    pr.push(['Total',...vals(m.tot.proj,m.tot.act)]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pr),'Portal');
+    const mo = [head(['Month'])];
+    m.months.forEach(r => { if (r.pairs) mo.push([r.month,...vals(r.proj,r.act)]); });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mo),'Monthly');
+    const sk = [head(['Portal','SKU','Type'])];
+    PA_PORTALS.forEach(p => Object.values(m.portals[p].skuMap).forEach(s => sk.push([pLabel(p),s.name,s.isNLC?'NLC':'Regular',...vals(s.proj,s.act,s.hasP,s.hasA)])));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sk),'SKU');
+    XLSX.writeFile(wb,'Snackible_Proj_vs_Actual_'+(ctx.period+'_'+ctx.label).replace(/[^a-zA-Z0-9]+/g,'_')+'.xlsx');
+    toast('✅ Exported');
+  };
+  if (typeof XLSX !== 'undefined') run();
+  else { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = run; s.onerror = () => toast('Failed to load XLSX library','err'); document.head.appendChild(s); }
+}
+
 // ── AI Insights ──────────────────────────────────────
 function viewInsights() {
   const portals = ['blinkit', 'zepto', 'instamart'];
@@ -2819,6 +3058,25 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl tr.pct-row td{padding-top:8px!important;padding-bottom:8px!important;font-size:13px!important;font-weight:600;color:var(--green);background:#F7FBFA}
   .dash-tbl tr.pct-row td:first-child{background:#F7FBFA;color:#1E293B;font-weight:600;-webkit-font-smoothing:antialiased}
   .dash-tbl tr.pct-row td{color:#02514F}
+  .pa-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+  .pa-kpi-p{font-size:12px;color:var(--tx3);margin-top:4px}
+  .pa-kpi-v{font-size:12.5px;font-weight:600;margin-top:2px}
+  .pa-good{color:var(--pos)!important}
+  .pa-bad{color:var(--neg)!important}
+  .pa-tbl th,.pa-tbl td{padding:10px 12px!important;font-size:13px!important;white-space:nowrap}
+  .pa-tbl th{font-size:11px!important}
+  .pa-tbl th.pa-grp{text-align:center;border-left:2px solid #D9E3E2}
+  .pa-tbl td.pa-start,.pa-tbl th.pa-start{border-left:2px solid #E7EEED}
+  .dash-tbl.pa-tbl tbody td:first-child,.dash-tbl.pa-tbl thead th:first-child{min-width:230px!important;width:230px;max-width:230px!important}
+  .pa-tbl thead tr:nth-child(2) th{top:37px}
+  .pa-tbl td small{display:block;font-size:11px;font-weight:500;opacity:.85}
+  .pa-tbl tr.pa-main{cursor:pointer}
+  .pa-tbl tr.pa-sub td{background:#FAFCFC;font-size:12.5px!important;color:#475569}
+  .dash-tbl.pa-tbl tr.pa-sub td:first-child{padding-left:30px!important;background:#FAFCFC}
+  .pa-tbl tr.pa-note td{background:#FFF8EC;color:#7A4A00;font-size:12px!important}
+  .dash-tbl.pa-tbl tr.pa-note td:first-child{background:#FFF8EC;position:static;max-width:none!important;width:auto;min-width:0!important;white-space:normal!important}
+  .pa-tbl tr.pa-miss td{color:var(--tx3);font-style:italic}
+  @media(max-width:1100px){.pa-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   `;
   document.head.appendChild(st);
 })();
@@ -2843,6 +3101,7 @@ function render(){
   else if(S.view==='trends')    body=viewTrends();
   else if(S.view==='insights')  body=viewInsights();
   else if(S.view==='unit')      body=viewUnitEconomics();
+  else if(S.view==='pa')        body=viewProjVsActual();
   document.getElementById('app').innerHTML='<div class="shell">'+sidebar()+'<main class="main">'+body+'</main></div>';
   document.querySelectorAll('main script').forEach(function(s){var el=document.createElement('script');el.textContent=s.textContent;document.body.appendChild(el);});
   syncSidebarOffset();
