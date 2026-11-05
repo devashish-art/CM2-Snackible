@@ -1049,12 +1049,12 @@ function viewDashboard() {
     +'</div>';
   const msel='<select class="msel" onchange="S.month=this.value;render()">'+months.map(m=>'<option value="'+m+'"'+(m===sel?' selected':'')+'>'+m+'</option>').join('')+'</select>';
 
-  return '<div class="ph"><div><div class="ph-title">Dashboard</div><div class="ph-sub">'+pLabel(S.portal)+' · '+sel+'</div></div><div class="ph-right" style="gap:8px">'+pBadge(S.portal)+' '+splitToggle+' '+msel+(isAdmin?'<button class="btn btn-yellow" onclick="go(\'entry\')">+ New Month</button>':'')
+  return '<div class="ph"><div><div class="ph-title">Dashboard</div><div class="ph-sub">'+pLabel(S.portal)+' · '+sel+'</div></div><div class="ph-right" style="gap:8px">'+pBadge(S.portal)+' '+splitToggle+' '+msel+(isAdmin?'<button class="btn btn-yellow" onclick="esNewMonth()">+ New Month</button>':'')
 +'<button class="btn btn-outline btn-sm" onclick="exportAllPortalsCurrentMonth()" style="background:#fff;border:1.5px solid var(--green);color:var(--green);font-weight:600;white-space:nowrap">📥 Export Excel</button>'
 +'</div></div>'
   +kpiCards(t,sel)
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';go(\'entry\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
+  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';esOpen(\''+sel+'\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
@@ -1079,30 +1079,50 @@ function viewDashboard() {
 // ── ENTRY ─────────────────────────────────────────────
 let ES = { skus:[], nlcSkus:[], month:'', portalTotals:{ads:'',vis:'',promos:'',splitBy:'netSales'}, nlcTotals:{ads:'',vis:''} };
 
-function initES() {
-  ES.portal = S.portal;
-  if (S.month && S.data[dKey(S.portal,S.month)]) {
-    const ex = S.data[dKey(S.portal,S.month)];
-    if (ex.config) S.config[S.portal] = JSON.parse(JSON.stringify(ex.config));
-    ES.skus         = JSON.parse(JSON.stringify(ex.skus ||[])).map(s=>({
-      ...s,
-      promos: (s.promos===0||s.promos===''||s.promos===null||s.promos===undefined) ? '' : s.promos,
-      ads:    (s.ads   ===0||s.ads   ===''||s.ads   ===null||s.ads   ===undefined) ? '' : s.ads,
-      visibility:(s.visibility===0||s.visibility===''||s.visibility===null||s.visibility===undefined)?'':s.visibility,
-      custom: s.custom||false,
-      c_gross: s.c_gross||'',
-      c_net: s.c_net||'',
+// Enter Data state: loads the saved month (latest by default) and keeps unsaved edits across re-renders
+function esLoad(portal, month) {
+  const ex = S.data[dKey(portal, month)];
+  ES.portal = portal; ES.month = month; ES._key = portal + '|' + month;
+  if (ex) {
+    if (ex.config) S.config[portal] = JSON.parse(JSON.stringify(ex.config));
+    const blank0 = v => (v===0||v===''||v===null||v===undefined) ? '' : v;
+    ES.skus = JSON.parse(JSON.stringify(ex.skus || [])).map(s => ({
+      ...s, promos: blank0(s.promos), ads: blank0(s.ads), visibility: blank0(s.visibility),
+      custom: s.custom || false, c_gross: s.c_gross || '', c_net: s.c_net || '',
     }));
-    ES.nlcSkus      = JSON.parse(JSON.stringify(ex.nlcSkus||[])).map(s=>({...s, promos:(s.promos===0||s.promos===null||s.promos===undefined)?'':s.promos}));
-    ES.portalTotals = JSON.parse(JSON.stringify(ex.portalTotals ||{ads:'',vis:'',promos:'',splitBy:'netSales'}));
-    ES.nlcTotals    = JSON.parse(JSON.stringify(ex.nlcTotals    ||{ads:'',vis:''}));
-    ES.month        = S.month;
+    ES.nlcSkus = JSON.parse(JSON.stringify(ex.nlcSkus || [])).map(s => ({ ...s, promos: blank0(s.promos), ads: blank0(s.ads), visibility: blank0(s.visibility) }));
+    ES.portalTotals = JSON.parse(JSON.stringify(ex.portalTotals || { ads:'', vis:'', promos:'', splitBy:'netSales' }));
+    ES.nlcTotals    = JSON.parse(JSON.stringify(ex.nlcTotals    || { ads:'', vis:'' }));
+    ES.saved = true;
   } else {
-    ES.skus=[]; ES.nlcSkus=[];
-    ES.portalTotals = {ads:'',vis:'',promos:'',splitBy:'netSales'};
-    ES.nlcTotals    = {ads:'',vis:''};
-    ES.month = MONTHS.includes('July 2026')?'July 2026':MONTHS[MONTHS.length-1];
+    ES.skus = []; ES.nlcSkus = [];
+    ES.portalTotals = { ads:'', vis:'', promos:'', splitBy:'netSales' };
+    ES.nlcTotals    = { ads:'', vis:'' };
+    ES.saved = false;
   }
+}
+function initES() {
+  // Same portal and month already loaded → keep what is on screen (unsaved edits survive re-renders)
+  if (ES._key && ES.portal === S.portal) return;
+  const saved = monthsFor(S.portal);
+  const m = (ES._want && MONTHS.includes(ES._want)) ? ES._want
+          : saved.length ? saved[saved.length - 1]
+          : (MONTHS.includes('July 2026') ? 'July 2026' : MONTHS[MONTHS.length - 1]);
+  ES._want = null;
+  esLoad(S.portal, m);
+}
+// Month dropdown: switch to that month's saved data, or a blank form for a new month
+function esChangeMonth(m) {
+  esLoad(S.portal, m);
+  render();
+  toast(ES.saved ? 'Loaded saved ' + pLabel(S.portal) + ' · ' + m : m + ' has no data yet · new month');
+}
+// Open Enter Data on a specific month (Edit button) or a fresh month (+ New Month)
+function esOpen(m) { ES._key = null; ES._want = m || null; go('entry'); }
+function esNewMonth() {
+  const saved = monthsFor(S.portal), last = saved[saved.length - 1];
+  const i = last ? MONTHS.indexOf(last) + 1 : -1;
+  esOpen(i > 0 && i < MONTHS.length ? MONTHS[i] : null);
 }
 
 const blankSku = n => ({name:n||'',gmv:'',qty:'',cost:'',promos:'',ads:'',visibility:''});
@@ -1120,7 +1140,7 @@ function viewEntry() {
   const pt = ES.portalTotals;
   const cfgPart = '<div class="card mb20"><div class="fbet mb20"><div class="thead-title">Portal Settings · '+pLabel(S.portal)+'</div><span style="font-size:11px;color:var(--tx3)">All % are of net-of-tax sales</span></div>'
     +'<div class="cfg-row">'
-    +'<div class="cfg-item"><label>Month</label><select id="es-month" style="width:160px" onchange="ES.month=this.value">'+MONTHS.map(m=>'<option value="'+m+'"'+(m===ES.month?' selected':'')+'>'+m+'</option>').join('')+'</select></div>'
+    +'<div class="cfg-item"><label>Month</label><select id="es-month" style="width:190px" onchange="esChangeMonth(this.value)">'+MONTHS.map(m=>'<option value="'+m+'"'+(m===ES.month?' selected':'')+'>'+m+(S.data[dKey(S.portal,m)]?'  ✓ saved':'')+'</option>').join('')+'</select></div>'
     +'<div class="cfg-item"><label>Commission %</label><input type="number" value="'+cfg.commission+'" step="0.1" onchange="updateCfg(\'commission\',this.value)"></div>'
     +'<div class="cfg-item"><label>GST %</label><input type="number" value="'+cfg.tax+'" step="0.5" onchange="updateCfg(\'tax\',this.value)"></div>'
     +'<div class="cfg-item"><label>Direct Exp %</label><input type="number" value="'+cfg.directExp+'" step="0.01" onchange="updateCfg(\'directExp\',this.value)"></div>'
@@ -1211,8 +1231,12 @@ function viewEntry() {
     +'<button class="btn btn-outline" onclick="go(\'dashboard\')">Cancel</button>'
     +'<button class="btn btn-primary" onclick="saveEntry()">💾 Save Month Data</button></div>';
 
-  return '<div class="ph"><div><div class="ph-title">Enter Data</div><div class="ph-sub">'+pLabel(S.portal)+'</div></div><div class="ph-right">'+pBadge(S.portal)+'</div></div>'
-    +cfgPart+regTbl+nlcTbl+(combinedCard||'')+actions;
+  const status = ES.saved
+    ? '<span style="font-size:12px;font-weight:600;color:var(--green);background:#E3F5EE;border-radius:6px;padding:4px 10px">Editing saved data · '+ES.month+' · no re-import needed</span>'
+    : '<span style="font-size:12px;font-weight:600;color:#9A5B00;background:#FFF4E5;border-radius:6px;padding:4px 10px">New month · '+ES.month+' · import or add SKUs</span>';
+  return '<div class="ph"><div><div class="ph-title">Enter Data</div><div class="ph-sub">'+pLabel(S.portal)+' · '+ES.month+'</div></div><div class="ph-right" style="gap:8px">'+status+pBadge(S.portal)+'</div></div>'
+    +cfgPart+regTbl+nlcTbl+(combinedCard||'')+actions
+    +'<script>try{refreshRegFoot();'+(isIM?'refreshNlcFoot();':'')+'if(typeof refreshCombinedTotal==="function")refreshCombinedTotal();}catch(e){}</script>';
 }
 
 function regRow(sku,i,cfg){
@@ -1605,6 +1629,7 @@ function saveEntry(){
   save(dKey(S.portal,month)).then(res => {
     S.month=month;
     if(!res.ok){ console.error('CM2 save failed', res.err); toast('❌ Not saved: '+res.err,'err'); alert('NOT SAVED to server\n\n'+res.err+'\n\nYour entries are still on screen. Fix the backend and click Save again.'); return; }
+    ES._key = null;
     toast('✅ '+pLabel(S.portal)+' · '+month+' saved'+(res.unverified?' (could not verify)':''));
     go('dashboard');
   });
@@ -3005,7 +3030,7 @@ function deleteMonth(month){
   toast('🗑 Deleted '+pLabel(S.portal)+' · '+month);
 }
 
-function go(v) { if(v==='entry' && !isAdmin){ toast('Access restricted','err'); return; } S.view=v; render(); }
+function go(v) { if(v==='entry' && !isAdmin){ toast('Access restricted','err'); return; } if(v==='entry' && S.view!=='entry' && !ES._want) ES._key=null; S.view=v; render(); }
 function setPortal(p) { const prevMonth=S.month; S.portal=p; S.month=(prevMonth&&S.data[dKey(p,prevMonth)])?prevMonth:null; render(); }
 function setDashSplit(v){ S.dashSplit=v; render(); }
 function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; delete S.data[dKey(p,m)]; fetch(SHEET_IMPORT_URL + '?action=deleteChunk&chunkKey=' + encodeURIComponent('cm2_chunk_' + dKey(p,m)), { cache: 'no-store' }); S.month=null; toast('Deleted '+m); render(); }
