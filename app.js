@@ -487,6 +487,7 @@ function exportCombinedRange() {
     r2(c.cm1), p4(c.cm1Pct), r2(c.promos), r2(c.ads), r2(c.vis), r2(c.cm2), p4(c.cm2Pct)];
 
   // Per SKU rows, same allocation as totals() so subtotals tie to the Combined tab
+  let RAW = [];
   function skuRows(p, e) {
     const cfg = e.config || S.config[p];
     const pt = e.portalTotals || {};
@@ -504,6 +505,7 @@ function exportCombinedRange() {
           blankOrUndef(s.promos) ? (g.promos || 0) * sh : 0);
         const cust = s.custom && (+s.c_gross > 0 || +s.c_net > 0);
         out.push(line(pLabel(p), s.name, cust ? 'Custom' : (isNLC ? 'NLC' : 'Regular'), c, +s.cost || 0));
+        RAW.push({ p, name: s.name, nlc: isNLC, c });
       });
     };
     grp(e.skus || [], false, pt);
@@ -540,7 +542,9 @@ function exportCombinedRange() {
       portals.forEach(p => {
         const e = S.data[dKey(p, m)]; if (!e) return;
         const t = totals(e.skus, e.nlcSkus, e.config || S.config[p], e.portalTotals, e.nlcTotals);
+        const before = RAW.length;
         skuRows(p, e).forEach(r => aoa.push(r));
+        for (let i = before; i < RAW.length; i++) RAW[i].month = m;
         aoa.push(line(pLabel(p), '▶ ' + pLabel(p) + ' Total', '', t, ''));
         aoa.push([]);
         addAcc(monthAcc, t);
@@ -560,6 +564,48 @@ function exportCombinedRange() {
     ws0['!cols'] = [{wch:30},{wch:20},...SH.slice(2).map(h => ({wch:Math.max(13, h.length+2)}))];
     XLSX.utils.book_append_sheet(wb, ws0, 'Combined');
 
+    // SKU Cumulative: each portal's SKUs summed across the selected months.
+    // Old and new listing names of the same product are grouped through SKU_Map (Master SKU · Pack).
+    const rangeLbl = months.length > 1 ? months[0] + ' – ' + months[months.length-1] : months[0];
+    const groups = {};
+    RAW.forEach(x => {
+      const mp = ueMapLookup(x.p, x.name);
+      let key, label;
+      if (mp) { key = 'M|' + mp.master.toLowerCase() + '|' + mp.pack; label = mp.master + (mp.pack ? ' · ' + mp.pack : ''); }
+      else { const g = ueGrams(x.name); key = 'A|' + (ueKey(x.name) || x.name) + '|' + g; label = ueDisplay(x.name) + (g ? ' · ' + g : '') + ' (unmapped)'; }
+      const type = x.nlc ? 'NLC' : 'Regular';
+      const k = x.p + '¦' + key + '¦' + type;
+      const G = groups[k] = groups[k] || { p: x.p, label, type, acc: blankAcc(), months: new Set(), names: new Set() };
+      addAcc(G.acc, x.c); G.months.add(x.month); G.names.add(x.name);
+    });
+    const CH = ['Portal','SKU (Master · Pack)','Type','Months with sales','GMV','Commission','Gross Sales','GST','Net Sales','Qty','Avg Cost/Unit','COGS','Direct Exp',
+      'Gross Margin','Labour','Logistics','CM1','CM1%','Promos','Ads','Visibility','CM2','CM2%','Portal listing names'];
+    const cum = [['SKU Cumulative · ' + rangeLbl + ' · each portal separately'], [], CH];
+    const pTot = {};
+    portals.forEach(p => {
+      const list = Object.values(groups).filter(g => g.p === p).sort((a, b) => b.acc.netSales - a.acc.netSales);
+      if (!list.length) return;
+      const tot = blankAcc();
+      list.forEach(g => {
+        const a = finish(g.acc); addAcc(tot, a);
+        cum.push([pLabel(p), g.label, g.type, g.months.size, r2(a.gmv), r2(a.commission), r2(a.grossSales), r2(a.taxAmt), r2(a.netSales), r2(a.qty),
+          a.qty > 0 ? r2(a.cogs / a.qty) : '', r2(a.cogs), r2(a.directExp), r2(a.grossMargin), r2(a.labour), r2(a.logistics),
+          r2(a.cm1), p4(a.cm1Pct), r2(a.promos), r2(a.ads), r2(a.vis), r2(a.cm2), p4(a.cm2Pct), [...g.names].join(' ; ')]);
+      });
+      finish(tot); pTot[p] = tot;
+      cum.push([pLabel(p), '▶ ' + pLabel(p) + ' Total', '', '', r2(tot.gmv), r2(tot.commission), r2(tot.grossSales), r2(tot.taxAmt), r2(tot.netSales), r2(tot.qty), '',
+        r2(tot.cogs), r2(tot.directExp), r2(tot.grossMargin), r2(tot.labour), r2(tot.logistics), r2(tot.cm1), p4(tot.cm1Pct), r2(tot.promos), r2(tot.ads), r2(tot.vis), r2(tot.cm2), p4(tot.cm2Pct), '']);
+      cum.push([]);
+    });
+    const wsC = XLSX.utils.aoa_to_sheet(cum);
+    for (let R = 3; R < cum.length; R++) for (let C = 4; C < 23; C++) {
+      const cell = wsC[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (cell && cell.t === 'n') cell.z = (C === 17 || C === 22) ? '0.00%' : '#,##0.00';
+    }
+    wsC['!cols'] = [{wch:12},{wch:48},{wch:9},{wch:10},...CH.slice(4, 23).map(h => ({wch:Math.max(12, h.length+2)})),{wch:90}];
+    wsC['!freeze'] = { xSplit: 2, ySplit: 3 };
+    XLSX.utils.book_append_sheet(wb, wsC, 'SKU Cumulative');
+
     monthSheets.forEach(([m, aoa]) => {
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       fmtSheet(ws, aoa.length, PCT_COLS, HEAD.length);
@@ -573,14 +619,21 @@ function exportCombinedRange() {
     toast('✅ Exported ' + months.length + ' month' + (months.length > 1 ? 's' : ''));
   }
 
-  if (typeof XLSX !== 'undefined') doExport();
-  else {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = doExport;
-    s.onerror = () => toast('Failed to load XLSX library', 'err');
-    document.head.appendChild(s);
-  }
+  // SKU_Map groups old and new listing names in the SKU Cumulative sheet; wait for it (max ~8s)
+  const go = () => {
+    if (typeof XLSX !== 'undefined') doExport();
+    else {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = doExport;
+      s.onerror = () => toast('Failed to load XLSX library', 'err');
+      document.head.appendChild(s);
+    }
+  };
+  if (UE_MAP && !UE_MAP_LOADING) { go(); return; }
+  ueLoadMap(); toast('Loading SKU_Map…');
+  let waited = 0;
+  const t = setInterval(() => { waited += 250; if ((UE_MAP && !UE_MAP_LOADING) || waited >= 8000) { clearInterval(t); go(); } }, 250);
 }
 
 // ── Sidebar ───────────────────────────────────────────
