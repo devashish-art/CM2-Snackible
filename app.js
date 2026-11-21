@@ -103,6 +103,7 @@ const S = {
   combineTo:   null,
   sideCollapsed: false,
   showPromoPct: false,
+  showPrev: false,
   showPct: false,
   ueMode: 'single',
   ueMonth: null,
@@ -766,6 +767,79 @@ function togglePromoPct(){
 }
 function toggleSidebar(){ S.sideCollapsed=!S.sideCollapsed; render(); }
 
+// ── Previous month comparison (per SKU) ───────────────
+// Per SKU calcs for a saved portal-month, same allocation as the dashboard table
+function dashSkuCalcs(p,m){
+  const e=S.data[dKey(p,m)]; if(!e) return null;
+  const cfg=e.config||S.config[p];
+  const pt=Object.assign({},e.portalTotals||{}), np=Object.assign({},e.nlcTotals||{});
+  const by=S.dashSplit;
+  const pool=(arr,isNLC,tot)=>{
+    const raw=arr.map(s=>{const c=calcSKU(s,cfg,isNLC,0,0,0);return by==='qty'?(c.qty||+s.qty||0):(c.netSales||0);});
+    const W=raw.reduce((a,v)=>a+v,0);
+    return arr.map((s,i)=>{
+      const sh=W>0?raw[i]/W:0;
+      const c=calcSKU(s,cfg,isNLC,
+        blankOrUndef(s.ads)?(tot.ads||0)*sh:0,
+        blankOrUndef(s.visibility)?(tot.vis||0)*sh:0,
+        blankOrUndef(s.promos)?(tot.promos||0)*sh:0);
+      c.name=s.name; c.nlc=isNLC; return c;
+    });
+  };
+  return {reg:pool(e.skus||[],false,pt), nlc:pool(e.nlcSkus||[],true,np)};
+}
+const PV_KEYS=['gmv','netSales','cogs','grossMargin','cm1','promos','ads','vis','cm2'];
+// Index previous month SKUs by exact name and by SKU_Map master (old listing names merge)
+function prevSkuIndex(p,m){
+  const d=dashSkuCalcs(p,m); if(!d) return null;
+  const byName={}, byKey={};
+  const add=(o,k,c)=>{ const x=o[k]||(o[k]={}); PV_KEYS.forEach(f=>x[f]=(x[f]||0)+(c[f]||0)); };
+  [...d.reg,...d.nlc].forEach(c=>{
+    const t=c.nlc?'N':'R';
+    add(byName,t+'|'+ueNorm(c.name),c);
+    const mm=ueMapLookup(p,c.name); if(mm) add(byKey,t+'|'+mm.master+'|'+mm.pack,c);
+  });
+  return {byName,byKey};
+}
+function prevSkuFind(idx,p,name,isNLC){
+  if(!idx) return null;
+  const t=isNLC?'N':'R', mm=ueMapLookup(p,name);
+  if(mm&&idx.byKey[t+'|'+mm.master+'|'+mm.pack]) return idx.byKey[t+'|'+mm.master+'|'+mm.pack];
+  return idx.byName[t+'|'+ueNorm(name)]||null;
+}
+// Sub row: previous month value on top, change below. ₹ cols: (cur − prev) / prev. % cols: pp change
+function prevSubRow(c,pv,lbl,cls){
+  const shortM=lbl;
+  if(!lbl) return '<tr class="prev-sub'+(cls?' '+cls:'')+'"><td class="pv-lbl">↳ No earlier month saved</td>'+'<td></td>'.repeat(17)+'</tr>';
+  if(!pv) return '<tr class="prev-sub'+(cls?' '+cls:'')+'"><td class="pv-lbl">↳ '+shortM+' · <b>New SKU</b>, not sold last month</td>'+'<td></td>'.repeat(17)+'</tr>';
+  const pctOf=(x,k)=>x.netSales>0?x[k]/x.netSales*100:null;
+  const chgSpan=(cur,old,cost,neutral)=>{
+    if(!old) return '—';
+    const d=(cur-old)/Math.abs(old)*100;
+    if(Math.abs(d)<0.05) return '<span>0.0%</span>';
+    const k=neutral?'':((cost?d<=0:d>=0)?'up':'dn');
+    return '<span class="'+k+'">'+(d>=0?'▲ ':'▼ ')+Math.abs(d).toFixed(1)+'%</span>';
+  };
+  const chgPP=(cur,old)=>{
+    if(cur===null||old===null) return '—';
+    const d=cur-old; if(Math.abs(d)<0.05) return '<span>0.0pp</span>'; return '<span class="'+(d>=0?'up':'dn')+'">'+(d>=0?'▲ ':'▼ ')+Math.abs(d).toFixed(1)+'pp</span>';
+  };
+  const amt=(k,cost,neutral)=>'<td class="r pv-c"><div class="pv-v">₹'+fmt(pv[k])+'</div><div class="pv-d">'+chgSpan(c[k],pv[k],cost,neutral)+'</div></td>';
+  const pct=k=>{ const a=pctOf(c,k), b=pctOf(pv,k); return '<td class="c pv-c"><div class="pv-v">'+(b===null?'—':fmtPct(b))+'</div><div class="pv-d">'+chgPP(a,b)+'</div></td>'; };
+  const gmA=pctOf(c,'grossMargin'), gmB=pctOf(pv,'grossMargin');
+  const gm='<td class="r pv-c"><div class="pv-v">₹'+fmt(pv.grossMargin)+' <small>· GM '+(gmB===null?'—':fmtPct(gmB))+'</small></div>'
+    +'<div class="pv-d">'+chgSpan(c.grossMargin,pv.grossMargin)+' · '+chgPP(gmA,gmB)+'</div></td>';
+  const map={1:amt('gmv'),3:amt('netSales'),6:amt('cogs',true,true),8:gm,11:amt('cm1'),12:pct('cm1'),13:amt('promos',true),14:amt('ads',true),15:amt('vis',true),16:amt('cm2'),17:pct('cm2')};
+  let cells='<td class="pv-lbl">↳ '+shortM+'<small>Prev · Δ</small></td>';
+  for(let i=1;i<18;i++) cells+=map[i]||'<td></td>';
+  return '<tr class="prev-sub'+(cls?' '+cls:'')+'">'+cells+'</tr>';
+}
+function togglePrev(){
+  S.showPrev=!S.showPrev;
+  const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-prev',S.showPrev);
+  const b=document.getElementById('prev-btn'); if(b) b.textContent=(S.showPrev?'▴ Hide':'▾ Show')+' Prev Month';
+}
+
 // Shared KPI mini grid: This month / Prev / MoM / 3M avg (agg=null hides 3M row)
 function kpiGridHTML(cols,cost,t,prev,prevLbl,agg,hideAgg){
   const cellVal=(col,src,isAgg)=>{
@@ -909,6 +983,18 @@ function viewDashboard() {
   const selIdxGlobal = MONTHS.indexOf(sel);
   const prev = selIdxGlobal > 0 ? MONTHS.slice(0, selIdxGlobal).reverse().find(m => S.data[dKey(S.portal, m)]) : null;
   if (prev){ const pe=S.data[dKey(S.portal,prev)]||{}; const pCfg=pe.config||cfg; const pPT=Object.assign({},pe.portalTotals||{},{splitBy:S.dashSplit}); const pNlcPT=Object.assign({},pe.nlcTotals||pe.portalTotals||{}); const pt=totals(pe.skus,pe.nlcSkus,pCfg,pPT,pNlcPT); mom={gmv:pt.gmv>0?(t.gmv-pt.gmv)/pt.gmv*100:null,cm1Pct:t.cm1Pct-pt.cm1Pct,cm2Pct:t.cm2Pct-pt.cm2Pct}; }
+  if(!UE_MAP) ueLoadMap();
+  const pvIdx = prev ? prevSkuIndex(S.portal, prev) : null;
+  const pvLbl = prev ? prev.slice(0,3)+" '"+prev.slice(-2) : '';
+  const pvFor = (sku,isNLC)=>prevSkuFind(pvIdx,S.portal,sku.name,isNLC);
+  const pvTot = which=>{
+    if(!prev) return null;
+    const pe=S.data[dKey(S.portal,prev)]||{}, pc2=pe.config||S.config[S.portal];
+    const ppt=Object.assign({},pe.portalTotals||{},{splitBy:S.dashSplit}), pnp=Object.assign({},pe.nlcTotals||{},{splitBy:S.dashSplit});
+    if(which==='reg') return totals(pe.skus||[],[],pc2,ppt,null);
+    if(which==='nlc') return (pe.nlcSkus||[]).length?totals([],pe.nlcSkus||[],pc2,pnp,pnp):null;
+    return totals(pe.skus,pe.nlcSkus,pc2,ppt,pnp);
+  };
   const delta=(v,suf)=>v==null?'':'<span style="font-size:10px;margin-left:5px;color:'+(v>=0?'var(--pos)':'var(--neg)')+';">'+(v>=0?'▲':'▼')+' '+Math.abs(v).toFixed(1)+(suf||'pp')+' MoM</span>';
 
   // Separate weights per group so allocation matches totals() exactly
@@ -961,7 +1047,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>'+promoSubRow(c);
+      +'</tr>'+promoSubRow(c)+prevSubRow(c,pvFor(sku,false),pvLbl);
   }).join('');
 
   // Regular subtotal (only for Instamart which has NLC)
@@ -985,7 +1071,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tReg.vis)+'</td>'
     +'<td class="r">₹'+fmt(tReg.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tReg.cm2Pct)+'">'+fmtPct(tReg.cm2Pct)+'</span></td>'
-    +'</tr>'+pctRows(tReg) : '';
+    +'</tr>'+prevSubRow(tReg,pvTot('reg'),pvLbl,'pv-tot')+pctRows(tReg) : '';
 
   // NLC section header + rows
   const nlcSectionHdr = dNlcSkus.length > 0 ? '<tr style="background:#DCEEFF"><td colspan="18" style="font-size:11px;font-weight:700;color:#235D8A;padding:6px 8px;letter-spacing:.04em">NLC SKUs</td></tr>' : '';
@@ -1016,7 +1102,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>'+promoSubRow(c);
+      +'</tr>'+promoSubRow(c)+prevSubRow(c,pvFor(sku,true),pvLbl);
   }).join('');
 
   // NLC subtotal
@@ -1040,7 +1126,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tNlc.vis)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tNlc.cm2Pct)+'">'+fmtPct(tNlc.cm2Pct)+'</span></td>'
-    +'</tr>'+pctRows(tNlc) : '';
+    +'</tr>'+prevSubRow(tNlc,pvTot('nlc'),pvLbl,'pv-tot')+pctRows(tNlc) : '';
 
   const rows = regRows + regSubtotal + nlcSectionHdr + nlcRows + nlcSubtotal;
   const splitToggle='<div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'
@@ -1054,11 +1140,11 @@ function viewDashboard() {
 +'</div></div>'
   +kpiCards(t,sel)
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';esOpen(\''+sel+'\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+'"><thead><tr>'
+  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';esOpen(\''+sel+'\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="prev-btn" class="btn btn-outline btn-sm" onclick="togglePrev()" title="'+(prev?'Compare with '+prev:'No earlier month saved')+'">'+(S.showPrev?'▴ Hide':'▾ Show')+' Prev Month</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+(S.showPrev?' show-prev':'')+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
-  +'</tr>'+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
+  +'</tr>'+prevSubRow(t,pvTot('all'),pvLbl,'pv-tot')+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
   // ── Saved metrics bar ──────────────────────────────
   +'<div class="saved-metrics" style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
   +'<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Saved Metrics (% of Net Sales)</div>'
@@ -2306,7 +2392,7 @@ function ueLoadMap(force){
       if(force) toast('SKU_Map reloaded · '+n+' rows');
     })
     .catch(()=>{ UE_MAP={}; UE_MAP_ERR=true; })
-    .finally(()=>{ UE_MAP_LOADING=false; if(S.view==='unit') render(); });
+    .finally(()=>{ UE_MAP_LOADING=false; const fs=document.fullscreenElement||document.webkitFullscreenElement||document.querySelector('.sku-card.is-fs'); if(S.view==='unit'||(S.view==='dashboard'&&!fs)) render(); });
 }
 // Name normalisers: case, punctuation and spacing never matter; ueBase also drops pack size
 function ueNorm(n){ return String(n||'').toLowerCase().replace(/[^a-z0-9.]+/g,' ').replace(/\s+/g,' ').trim(); }
@@ -3128,6 +3214,18 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl .ps-val{white-space:nowrap}
   .dash-tbl .ps-val span{display:inline-block;background:#FFF4E5;color:#9A5B00;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:600}
   .dash-tbl .ps-val small{font-weight:500;opacity:.8}
+  .dash-tbl tr.prev-sub{display:none}
+  .dash-tbl.show-prev tr.prev-sub{display:table-row}
+  .dash-tbl tr.prev-sub td{padding-top:3px!important;padding-bottom:7px!important;background:#F6F8FC;border-top:none;font-size:12px!important;color:#475569;line-height:1.35}
+  .dash-tbl tr.prev-sub td:first-child{background:#F6F8FC;font-style:italic;padding-left:28px!important;color:#64748B}
+  .dash-tbl tr.prev-sub.pv-tot td,.dash-tbl tr.prev-sub.pv-tot td:first-child{background:#EAF0F7}
+  .dash-tbl .pv-lbl small{display:block;font-size:10.5px;font-style:normal;opacity:.75}
+  .dash-tbl .pv-c{white-space:nowrap}
+  .dash-tbl .pv-v{font-weight:600;color:#334155}
+  .dash-tbl .pv-v small{font-weight:500;color:#64748B;font-size:11px}
+  .dash-tbl .pv-d{font-size:11.5px;font-weight:600;color:#64748B}
+  .dash-tbl .pv-d .up{color:var(--pos)}
+  .dash-tbl .pv-d .dn{color:var(--neg)}
   .dash-tbl tr.pct-row{display:none}
   .dash-tbl.show-pct tr.pct-row{display:table-row}
   .dash-tbl tr.pct-toggle td{padding-top:6px!important;padding-bottom:6px!important;background:#fff;border-bottom:none}
