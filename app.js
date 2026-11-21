@@ -104,6 +104,7 @@ const S = {
   sideCollapsed: false,
   showPromoPct: false,
   showPrev: false,
+  prevN: 1,
   showPct: false,
   ueMode: 'single',
   ueMonth: null,
@@ -811,7 +812,7 @@ function prevSkuFind(idx,p,name,isNLC){
 function prevSubRow(c,pv,lbl,cls){
   const shortM=lbl;
   if(!lbl) return '<tr class="prev-sub'+(cls?' '+cls:'')+'"><td class="pv-lbl">↳ No earlier month saved</td>'+'<td></td>'.repeat(17)+'</tr>';
-  if(!pv) return '<tr class="prev-sub'+(cls?' '+cls:'')+'"><td class="pv-lbl">↳ '+shortM+' · <b>New SKU</b>, not sold last month</td>'+'<td></td>'.repeat(17)+'</tr>';
+  if(!pv) return '<tr class="prev-sub'+(cls?' '+cls:'')+'"><td class="pv-lbl">↳ '+shortM+' · <b>Not sold</b> that month</td>'+'<td></td>'.repeat(17)+'</tr>';
   const pctOf=(x,k)=>x.netSales>0?x[k]/x.netSales*100:null;
   const chgSpan=(cur,old,cost,neutral)=>{
     if(!old) return '—';
@@ -840,7 +841,14 @@ function prevSubRow(c,pv,lbl,cls){
 function togglePrev(){
   S.showPrev=!S.showPrev;
   const tb=document.querySelector('.dash-tbl'); if(tb) tb.classList.toggle('show-prev',S.showPrev);
-  const b=document.getElementById('prev-btn'); if(b) b.textContent=(S.showPrev?'▴ Hide':'▾ Show')+' Prev Month';
+  const b=document.getElementById('prev-btn'); if(b) b.textContent=(S.showPrev?'▴ Hide':'▾ Show')+' Prev Months';
+}
+// 1, 2 or 3 earlier months; rows are already built, so no re-render (keeps Expand view open)
+function setPrevN(n){
+  S.prevN=+n||1;
+  const tb=document.querySelector('.dash-tbl'); if(!tb) return;
+  tb.classList.remove('pvn1','pvn2','pvn3'); tb.classList.add('pvn'+S.prevN);
+  if(!S.showPrev) togglePrev();
 }
 
 // Shared KPI mini grid: This month / Prev / MoM / 3M avg (agg=null hides 3M row)
@@ -987,17 +995,23 @@ function viewDashboard() {
   const prev = selIdxGlobal > 0 ? MONTHS.slice(0, selIdxGlobal).reverse().find(m => S.data[dKey(S.portal, m)]) : null;
   if (prev){ const pe=S.data[dKey(S.portal,prev)]||{}; const pCfg=pe.config||cfg; const pPT=Object.assign({},pe.portalTotals||{},{splitBy:S.dashSplit}); const pNlcPT=Object.assign({},pe.nlcTotals||pe.portalTotals||{}); const pt=totals(pe.skus,pe.nlcSkus,pCfg,pPT,pNlcPT); mom={gmv:pt.gmv>0?(t.gmv-pt.gmv)/pt.gmv*100:null,cm1Pct:t.cm1Pct-pt.cm1Pct,cm2Pct:t.cm2Pct-pt.cm2Pct}; }
   if(!UE_MAP) ueLoadMap();
-  const pvIdx = prev ? prevSkuIndex(S.portal, prev) : null;
-  const pvLbl = prev ? prev.slice(0,3)+" '"+prev.slice(-2) : '';
-  const pvFor = (sku,isNLC)=>prevSkuFind(pvIdx,S.portal,sku.name,isNLC);
-  const pvTot = which=>{
-    if(!prev) return null;
-    const pe=S.data[dKey(S.portal,prev)]||{}, pc2=pe.config||S.config[S.portal];
+  // Up to 3 earlier saved months, latest first; the selector chooses how many are visible
+  const pvMonths = MONTHS.slice(0, selIdxGlobal).reverse().filter(m => S.data[dKey(S.portal, m)]).slice(0,3);
+  const pvList = pvMonths.map(m=>({m, lbl:m.slice(0,3)+" '"+m.slice(-2), idx:prevSkuIndex(S.portal,m)}));
+  const pvTotOf = (m,which)=>{
+    const pe=S.data[dKey(S.portal,m)]||{}, pc2=pe.config||S.config[S.portal];
     const ppt=Object.assign({},pe.portalTotals||{},{splitBy:S.dashSplit}), pnp=Object.assign({},pe.nlcTotals||{},{splitBy:S.dashSplit});
     if(which==='reg') return totals(pe.skus||[],[],pc2,ppt,null);
     if(which==='nlc') return (pe.nlcSkus||[]).length?totals([],pe.nlcSkus||[],pc2,pnp,pnp):null;
     return totals(pe.skus,pe.nlcSkus,pc2,ppt,pnp);
   };
+  const pvWrap = (html,k)=>html.replace('<tr class="prev-sub','<tr class="prev-sub pv-k'+k);
+  const pvSku = (c,sku,isNLC)=> pvList.length
+    ? pvList.map((x,i)=>pvWrap(prevSubRow(c,prevSkuFind(x.idx,S.portal,sku.name,isNLC),x.lbl),i+1)).join('')
+    : pvWrap(prevSubRow(c,null,''),1);
+  const pvTotRows = (c,which)=> pvList.length
+    ? pvList.map((x,i)=>pvWrap(prevSubRow(c,pvTotOf(x.m,which),x.lbl,'pv-tot'),i+1)).join('')
+    : pvWrap(prevSubRow(c,null,'','pv-tot'),1);
   const delta=(v,suf)=>v==null?'':'<span style="font-size:10px;margin-left:5px;color:'+(v>=0?'var(--pos)':'var(--neg)')+';">'+(v>=0?'▲':'▼')+' '+Math.abs(v).toFixed(1)+(suf||'pp')+' MoM</span>';
 
   // Separate weights per group so allocation matches totals() exactly
@@ -1050,7 +1064,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>'+promoSubRow(c)+prevSubRow(c,pvFor(sku,false),pvLbl);
+      +'</tr>'+promoSubRow(c)+pvSku(c,sku,false);
   }).join('');
 
   // Regular subtotal (only for Instamart which has NLC)
@@ -1074,7 +1088,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tReg.vis)+'</td>'
     +'<td class="r">₹'+fmt(tReg.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tReg.cm2Pct)+'">'+fmtPct(tReg.cm2Pct)+'</span></td>'
-    +'</tr>'+prevSubRow(tReg,pvTot('reg'),pvLbl,'pv-tot')+pctRows(tReg) : '';
+    +'</tr>'+pvTotRows(tReg,'reg')+pctRows(tReg) : '';
 
   // NLC section header + rows
   const nlcSectionHdr = dNlcSkus.length > 0 ? '<tr style="background:#DCEEFF"><td colspan="18" style="font-size:11px;font-weight:700;color:#235D8A;padding:6px 8px;letter-spacing:.04em">NLC SKUs</td></tr>' : '';
@@ -1105,7 +1119,7 @@ function viewDashboard() {
       +'<td class="r">₹'+fmt(c.vis)+'</td>'
       +'<td class="r">₹'+fmt(c.cm2)+'</td>'
       +'<td class="c"><span class="pill '+pc(c.cm2Pct)+'">'+fmtPct(c.cm2Pct)+'</span></td>'
-      +'</tr>'+promoSubRow(c)+prevSubRow(c,pvFor(sku,true),pvLbl);
+      +'</tr>'+promoSubRow(c)+pvSku(c,sku,true);
   }).join('');
 
   // NLC subtotal
@@ -1129,7 +1143,7 @@ function viewDashboard() {
     +'<td class="r">₹'+fmt(tNlc.vis)+'</td>'
     +'<td class="r">₹'+fmt(tNlc.cm2)+'</td>'
     +'<td class="c"><span class="pill '+pc(tNlc.cm2Pct)+'">'+fmtPct(tNlc.cm2Pct)+'</span></td>'
-    +'</tr>'+prevSubRow(tNlc,pvTot('nlc'),pvLbl,'pv-tot')+pctRows(tNlc) : '';
+    +'</tr>'+pvTotRows(tNlc,'nlc')+pctRows(tNlc) : '';
 
   const rows = regRows + regSubtotal + nlcSectionHdr + nlcRows + nlcSubtotal;
   const splitToggle='<div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:6px;overflow:hidden">'
@@ -1143,11 +1157,11 @@ function viewDashboard() {
 +'</div></div>'
   +kpiCards(t,sel)
   +skuLeaders(dAllSkus,cfg,dRawVals,regTotalW,nlcTotalW,pAds,pVis,pPromos,nAds,nVis,nPromos)
-  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';esOpen(\''+sel+'\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><button id="prev-btn" class="btn btn-outline btn-sm" onclick="togglePrev()" title="'+(prev?'Compare with '+prev:'No earlier month saved')+'">'+(S.showPrev?'▴ Hide':'▾ Show')+' Prev Month</button><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+(S.showPrev?' show-prev':'')+'"><thead><tr>'
+  +'<div class="card tcard sku-card" id="sku-card"><div class="thead-row"><div class="thead-title">SKU Breakdown · '+sel+'</div><div class="flex gap8">'+(isAdmin?'<button class="btn btn-outline btn-sm" onclick="S.month=\''+sel+'\';esOpen(\''+sel+'\')">✏️ Edit</button><button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA" onclick="deleteMonth(\''+sel+'\')">🗑 Delete Month</button>':'')+'<button id="promo-pct-btn" class="btn btn-outline btn-sm" onclick="togglePromoPct()">'+(S.showPromoPct?'▴ Hide':'▾ Show')+' Promo %</button><span class="pv-ctl"><button id="prev-btn" class="btn btn-outline btn-sm" onclick="togglePrev()" title="'+(pvMonths.length?'Compare with '+pvMonths.join(', '):'No earlier month saved')+'">'+(S.showPrev?'▴ Hide':'▾ Show')+' Prev Months</button><select class="pv-sel" onchange="setPrevN(this.value)" title="How many earlier months">'+[1,2,3].map(n=>'<option value="'+n+'"'+(n===S.prevN?' selected':'')+'>'+n+'M</option>').join('')+'</select></span><button id="fs-btn" class="btn btn-sm fs-btn" onclick="toggleSkuFullscreen()">⛶ Expand</button></div></div>'+fsStrip(t,sel)+'<div class="twrap"><table class="dash-tbl'+(S.showPromoPct?' show-promo':'')+(S.showPct?' show-pct':'')+(S.showPrev?' show-prev':'')+' pvn'+S.prevN+'"><thead><tr>'
   +'<th>SKU</th><th class="r">GMV</th><th class="r">Gross Sales</th><th class="r">Net Sales</th><th class="r">Qty</th><th class="r">Cost/Unit</th><th class="r">COGS</th><th class="r">Direct Exp</th><th class="r">Gross Margin</th><th class="r">Labour</th><th class="r">Logistics</th><th class="r">CM1 ₹</th><th class="c">CM1%</th><th class="r">Promos</th><th class="r">Ads</th><th class="r">Visibility</th><th class="r">CM2 ₹</th><th class="c">CM2%</th>'
   +'</tr></thead><tbody>'+(rows||emptyRow(18,'No SKUs'))
   +'<tr class="gt"><td>Grand Total</td><td class="r">₹'+fmt(t.gmv)+'</td><td class="r">₹'+fmt(t.grossSales)+'</td><td class="r">₹'+fmt(t.netSales)+'</td><td class="r">'+fmt(t.qty)+'</td><td class="r">—</td><td class="r">₹'+fmt(t.cogs)+'</td><td class="r">₹'+fmt(t.directExp)+'</td><td class="r">₹'+fmt(t.grossMargin)+'</td><td class="r">₹'+fmt(t.labour)+'</td><td class="r">₹'+fmt(t.logistics)+'</td><td class="r">₹'+fmt(t.cm1)+'</td><td class="c"><span class="pill '+pc(t.cm1Pct)+'">'+fmtPct(t.cm1Pct)+'</span></td><td class="r">₹'+fmt(t.promos)+'</td><td class="r">₹'+fmt(t.ads)+'</td><td class="r">₹'+fmt(t.vis)+'</td><td class="r">₹'+fmt(t.cm2)+'</td><td class="c"><span class="pill '+pc(t.cm2Pct)+'">'+fmtPct(t.cm2Pct)+'</span></td>'
-  +'</tr>'+prevSubRow(t,pvTot('all'),pvLbl,'pv-tot')+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
+  +'</tr>'+pvTotRows(t,'all')+pctToggleRow()+pctRows(t)+'</tbody></table></div>'
   // ── Saved metrics bar ──────────────────────────────
   +'<div class="saved-metrics" style="margin-top:16px;background:#1E2A35;border-radius:10px;padding:14px 20px">'
   +'<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Saved Metrics (% of Net Sales)</div>'
@@ -3219,6 +3233,11 @@ function delMonth(p,m){ if(!confirm('Delete '+pLabel(p)+' · '+m+'?'))return; de
   .dash-tbl .ps-val small{font-weight:500;opacity:.8}
   .dash-tbl tr.prev-sub{display:none}
   .dash-tbl.show-prev tr.prev-sub{display:table-row}
+  .dash-tbl.pvn1 tr.pv-k2,.dash-tbl.pvn1 tr.pv-k3,.dash-tbl.pvn2 tr.pv-k3{display:none!important}
+  .dash-tbl.show-prev tr.prev-sub.pv-k2 td,.dash-tbl.show-prev tr.prev-sub.pv-k3 td{padding-top:2px!important}
+  .pv-ctl{display:inline-flex;align-items:stretch}
+  .pv-ctl .btn{border-top-right-radius:0;border-bottom-right-radius:0}
+  .pv-sel{border:1.5px solid var(--border);border-left:none;border-radius:0 6px 6px 0;font-family:Poppins,sans-serif;font-size:12px;font-weight:600;padding:0 6px;background:#fff;color:var(--tx);cursor:pointer}
   .dash-tbl tr.prev-sub td{padding-top:3px!important;padding-bottom:7px!important;background:#F6F8FC;border-top:none;font-size:12px!important;color:#475569;line-height:1.35}
   .dash-tbl tr.prev-sub td:first-child{background:#F6F8FC;font-style:italic;padding-left:28px!important;color:#64748B}
   .dash-tbl tr.prev-sub.pv-tot td,.dash-tbl tr.prev-sub.pv-tot td:first-child{background:#EAF0F7}
