@@ -788,7 +788,7 @@ function dashSkuCalcs(p,m){
   };
   return {reg:pool(e.skus||[],false,pt), nlc:pool(e.nlcSkus||[],true,np)};
 }
-const PV_KEYS=['gmv','netSales','cogs','grossMargin','cm1','promos','ads','vis','cm2'];
+const PV_KEYS=['gmv','netSales','qty','cogs','grossMargin','cm1','promos','ads','vis','cm2'];
 // Index previous month SKUs by exact name and by SKU_Map master (old listing names merge)
 function prevSkuIndex(p,m){
   const d=dashSkuCalcs(p,m); if(!d) return null;
@@ -826,10 +826,13 @@ function prevSubRow(c,pv,lbl,cls){
   };
   const amt=(k,cost,neutral)=>'<td class="r pv-c"><div class="pv-v">₹'+fmt(pv[k])+'</div><div class="pv-d">'+chgSpan(c[k],pv[k],cost,neutral)+'</div></td>';
   const pct=k=>{ const a=pctOf(c,k), b=pctOf(pv,k); return '<td class="c pv-c"><div class="pv-v">'+(b===null?'—':fmtPct(b))+'</div><div class="pv-d">'+chgPP(a,b)+'</div></td>'; };
+  const cpu=x=>(+x.qty>0)?x.cogs/x.qty:0;
+  const qtyCell='<td class="r pv-c"><div class="pv-v">'+fmt(pv.qty||0)+'</div><div class="pv-d">'+chgSpan(c.qty||0,pv.qty||0)+'</div></td>';
+  const cpuCell='<td class="r pv-c"><div class="pv-v">₹'+cpu(pv).toFixed(2)+'</div><div class="pv-d">'+chgSpan(cpu(c),cpu(pv),true)+'</div></td>';
   const gmA=pctOf(c,'grossMargin'), gmB=pctOf(pv,'grossMargin');
   const gm='<td class="r pv-c"><div class="pv-v">₹'+fmt(pv.grossMargin)+' <small>· GM '+(gmB===null?'—':fmtPct(gmB))+'</small></div>'
     +'<div class="pv-d">'+chgSpan(c.grossMargin,pv.grossMargin)+' · '+chgPP(gmA,gmB)+'</div></td>';
-  const map={1:amt('gmv'),3:amt('netSales'),6:amt('cogs',true,true),8:gm,11:amt('cm1'),12:pct('cm1'),13:amt('promos',true),14:amt('ads',true),15:amt('vis',true),16:amt('cm2'),17:pct('cm2')};
+  const map={1:amt('gmv'),3:amt('netSales'),4:qtyCell,5:cpuCell,8:gm,11:amt('cm1'),12:pct('cm1'),13:amt('promos',true),14:amt('ads',true),15:amt('vis',true),16:amt('cm2'),17:pct('cm2')};
   let cells='<td class="pv-lbl">↳ '+shortM+'<small>Prev · Δ</small></td>';
   for(let i=1;i<18;i++) cells+=map[i]||'<td></td>';
   return '<tr class="prev-sub'+(cls?' '+cls:'')+'">'+cells+'</tr>';
