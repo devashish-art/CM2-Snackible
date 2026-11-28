@@ -643,7 +643,7 @@ function sidebar() {
   const nv=(v,ic,lb)=>'<div class="nav-item'+(S.view===v?' active':'')+'" onclick="go(\''+v+'\')" title="'+lb+'"><span class="nav-icon">'+ic+'</span><span class="sb-lbl">'+lb+'</span></div>';
   const cp=(p,ic,lb)=>'<div class="pchip '+p+(S.portal===p?' active':'')+'" onclick="setPortal(\''+p+'\')" title="'+lb+'">'+ic+'<span class="sb-lbl"> '+lb+'</span></div>';
   const tgl='<button class="sb-toggle" onclick="toggleSidebar()" title="'+(S.sideCollapsed?'Expand':'Collapse')+' sidebar">'+(S.sideCollapsed?'»':'«')+'</button>';
-  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('pa','🎯','Proj vs Actual')+nv('unit','🧮','Unit Economics')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
+  return '<div class="sidebar'+(S.sideCollapsed?' collapsed':'')+'"><div class="logo sb-logo"><div class="sb-lbl"><div class="logo-brand">Snackible</div><div class="logo-sub">QCom CM2</div></div>'+tgl+'</div><div class="sec-label">Views</div>'+nv('dashboard','📊','Dashboard')+(isAdmin?nv('entry','➕','Enter Data'):'')+nv('combined','🔀','Combined')+nv('trends','📈','Trends')+nv('pa','🎯','Proj vs Actual')+nv('running','🏃','Running CM2')+nv('unit','🧮','Unit Economics')+nv('insights','🤖','AI Insights')+'<div class="sec-label">Portal</div><div class="portal-chips">'+cp('blinkit','🟡','Blinkit')+cp('zepto','🟠','Zepto')+cp('instamart','🔵','Instamart')+'</div><div class="sec-label">Links</div><a href="https://snackible-cm-2-projections.vercel.app/" target="_blank" class="pchip" style="text-decoration:none;display:block;color:rgba(255,255,255,.6)" title="Projections">🔮<span class="sb-lbl"> Projections ↗</span></a></div>';
 }
 
 // ── SKU LEADERS ───────────────────────────────────────
@@ -1338,7 +1338,7 @@ function viewEntry() {
     ? '<span style="font-size:12px;font-weight:600;color:var(--green);background:#E3F5EE;border-radius:6px;padding:4px 10px">Editing saved data · '+ES.month+' · no re-import needed</span>'
     : '<span style="font-size:12px;font-weight:600;color:#9A5B00;background:#FFF4E5;border-radius:6px;padding:4px 10px">New month · '+ES.month+' · import or add SKUs</span>';
   return '<div class="ph"><div><div class="ph-title">Enter Data</div><div class="ph-sub">'+pLabel(S.portal)+' · '+ES.month+'</div></div><div class="ph-right" style="gap:8px">'+status+pBadge(S.portal)+'</div></div>'
-    +cfgPart+regTbl+nlcTbl+(combinedCard||'')+actions
+    +(isIM&&typeof rcNlcWarn==='function'?rcNlcWarn(ES.month):'')+cfgPart+regTbl+nlcTbl+(combinedCard||'')+actions
     +'<script>try{refreshRegFoot();'+(isIM?'refreshNlcFoot();':'')+'if(typeof refreshCombinedTotal==="function")refreshCombinedTotal();}catch(e){}</script>';
 }
 
@@ -2409,7 +2409,7 @@ function ueLoadMap(force){
       if(force) toast('SKU_Map reloaded · '+n+' rows');
     })
     .catch(()=>{ UE_MAP={}; UE_MAP_ERR=true; })
-    .finally(()=>{ UE_MAP_LOADING=false; const fs=document.fullscreenElement||document.webkitFullscreenElement||document.querySelector('.sku-card.is-fs'); if(S.view==='unit'||(S.view==='dashboard'&&!fs)) render(); });
+    .finally(()=>{ UE_MAP_LOADING=false; const fs=document.fullscreenElement||document.webkitFullscreenElement||document.querySelector('.sku-card.is-fs'); if(S.view==='unit'||S.view==='running'||S.view==='entry'||(S.view==='dashboard'&&!fs)) render(); });
 }
 // Name normalisers: case, punctuation and spacing never matter; ueBase also drops pack size
 function ueNorm(n){ return String(n||'').toLowerCase().replace(/[^a-z0-9.]+/g,' ').replace(/\s+/g,' ').trim(); }
@@ -3290,6 +3290,611 @@ function syncSidebarOffset(){
   }
 }
 
+// ═══════════════════════════════════════════════════════
+//  RUNNING CM2 (draft) · weekly portal files vs projection
+//  Storage: chunks in the same backend (no backend change)
+//    rc_<YYYY-MM>_<portal>_<type>  → day level rows for that month
+//    rc_meta                        → new product codes, NLC changes, Ads + Vis to date
+// ═══════════════════════════════════════════════════════
+const RC_P = ['blinkit','zepto','instamart'];
+const RC_KINDS = { 'blinkit|sales':'Blinkit sales + promos', 'zepto|sales':'Zepto sales', 'zepto|promos':'Zepto promos', 'instamart|sales':'Instamart sales', 'instamart|promos':'Instamart promos' };
+const RC_MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const rcYm = label => { const [m,y] = String(label||'').split(' '); const i = RC_MN.indexOf(m); return i<0 ? '' : y+'-'+('0'+(i+1)).slice(-2); };
+const rcLabel = ym => RC_MN[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
+const rcDays = ym => new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+const rcEsc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let RC_UP = null;   // parsed files waiting to be saved
+
+function rcMeta(){ const m = S.data.rc_meta; return (m && typeof m==='object') ? m : { codes:{}, nlc:{}, adsvis:{} }; }
+function rcChunk(ym,p,t){ return S.data['rc_'+ym+'_'+p+'_'+t] || null; }
+function rcMonthsWithData(){
+  const s = new Set();
+  Object.keys(S.data).forEach(k => { const m = k.match(/^rc_(\d{4}-\d{2})_/); if (m) s.add(m[1]); });
+  return [...s].sort();
+}
+
+// ── Dates ─────────────────────────────────────────────
+function rcDate(v){
+  if (v==null || v==='') return null;
+  if (v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+('0'+(v.getMonth()+1)).slice(-2)+'-'+('0'+v.getDate()).slice(-2);
+  if (typeof v==='number' && v>20000 && v<80000) { const d = new Date(Math.round((Math.floor(v+1e-6)-25569)*864e5)); return d.toISOString().slice(0,10); }
+  const s = String(v).trim(); let x;
+  if ((x = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return x[1]+'-'+('0'+x[2]).slice(-2)+'-'+('0'+x[3]).slice(-2);
+  if ((x = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/))) return x[3]+'-'+('0'+x[2]).slice(-2)+'-'+('0'+x[1]).slice(-2);
+  const mi = (s.toLowerCase().match(/[a-z]{3,}/g)||[]).map(w => RC_MN.map(m=>m.slice(0,3).toLowerCase()).indexOf(w.slice(0,3))).find(i => i>=0);
+  const yy = s.match(/\b(\d{4})\b/), dd = s.replace(/\b\d{4}\b/,'').match(/\b(\d{1,2})\b/);
+  if (mi!==undefined && yy && dd) return yy[1]+'-'+('0'+(mi+1)).slice(-2)+'-'+('0'+dd[1]).slice(-2);
+  return null;
+}
+const rcNum = v => { if (typeof v==='number') return isFinite(v)?v:0; const n = parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; };
+function rcDayList(a,b){ const out=[]; let t=Date.UTC(+a.slice(0,4),+a.slice(5,7)-1,+a.slice(8,10)); const e=Date.UTC(+b.slice(0,4),+b.slice(5,7)-1,+b.slice(8,10)); while(t<=e && out.length<400){ out.push(new Date(t).toISOString().slice(0,10)); t+=864e5; } return out; }
+// Monday to Sunday weeks, cut at month start and end
+function rcWeeks(ym){
+  const n = rcDays(ym), out = []; let cur = null;
+  for (let d=1; d<=n; d++){
+    const iso = ym+'-'+('0'+d).slice(-2), dow = new Date(+ym.slice(0,4), +ym.slice(5,7)-1, d).getDay();
+    if (!cur || dow===1){ cur = { from:iso, to:iso, days:0 }; out.push(cur); }
+    cur.to = iso; cur.days++;
+  }
+  return out.map((w,i) => Object.assign(w, { n:i+1 }));
+}
+
+// ── Product identity: portal code → master product ──
+// Sales files carry the full name (with grammage); promo files often do not.
+// So a code is identified from its sales name first, then from the name in hand.
+let RC_CODE_IX = null;
+function rcCodeIndex(){
+  if (RC_CODE_IX) return RC_CODE_IX;
+  const ix = {};
+  if (typeof ueMapLookup!=='function' || !UE_MAP || !UE_MAP.exact) return ix;
+  const add = (p, code, name) => { const k = p+'|'+code; if (ix[k]) return; const m = ueMapLookup(p, name); if (m) ix[k] = m; };
+  Object.keys(S.data).forEach(k => { const c = S.data[k]; if (!/^rc_\d{4}-\d{2}_/.test(k) || !c || c.t!=='sales') return; (c.rows||[]).forEach(r => add(c.p, r[1], r[2])); });
+  if (RC_UP) RC_UP.files.filter(f=>!f.err && f.t==='sales').forEach(f => f.recs.forEach(r => add(f.p, r[1], r[2])));
+  return (RC_CODE_IX = ix);
+}
+function rcMasterOf(p, code, name){
+  const meta = rcMeta(), o = (meta.codes||{})[p+'|'+code];
+  if (o && o.master) return { master:o.master, pack:o.pack||'', src:'confirmed' };
+  const ci = rcCodeIndex()[p+'|'+code];
+  if (ci) return { master:ci.master, pack:ci.pack, src:'SKU_Map' };
+  if (typeof ueMapLookup==='function' && UE_MAP && UE_MAP.exact){
+    const m = ueMapLookup(p, name);
+    if (m) return { master:m.master, pack:m.pack, src:'SKU_Map' };
+  }
+  return null;
+}
+const rcMKey = m => (m.master+'|'+(m.pack||'')).toLowerCase();
+
+// Latest CM2 dashboard month before ym for a portal
+function rcPrevCM2(p, ym){
+  const idx = MONTHS.indexOf(rcLabel(ym));
+  for (let i = (idx<0?MONTHS.length:idx)-1; i>=0; i--){ const e = S.data[dKey(p,MONTHS[i])]; if (e) return { m:MONTHS[i], e }; }
+  return null;
+}
+// cost per master product: same portal last month, else any portal last month, else confirmed cost
+function rcCostIndex(ym){
+  const idx = { byP:{}, any:{} };
+  RC_P.forEach(p => {
+    const pv = rcPrevCM2(p, ym); if (!pv) return;
+    [...(pv.e.skus||[]), ...(pv.e.nlcSkus||[])].forEach(s => {
+      const c = +s.cost||0; if (!c) return;
+      const m = (typeof ueMapLookup==='function' && UE_MAP && UE_MAP.exact) ? ueMapLookup(p, s.name) : null; if (!m) return;
+      const k = rcMKey(m); (idx.byP[p] = idx.byP[p]||{})[k] = c; if (!idx.any[k]) idx.any[k] = c;
+    });
+  });
+  return idx;
+}
+// Instamart NLC: products that were NLC in last month's CM2, then this month's changes (from the 1st)
+function rcNlcState(ym){
+  const base = {};
+  const pv = rcPrevCM2('instamart', ym);
+  if (pv) (pv.e.nlcSkus||[]).forEach(s => {
+    const m = (typeof ueMapLookup==='function' && UE_MAP && UE_MAP.exact) ? ueMapLookup('instamart', s.name) : null;
+    if (m && +s.nlc_price>0) base[rcMKey(m)] = { nlc:true, price:+s.nlc_price, master:m.master, pack:m.pack, src:'CM2 '+pv.m };
+  });
+  const ch = (rcMeta().nlc||{})[ym] || {};
+  Object.keys(ch).forEach(k => { base[k] = Object.assign({}, base[k]||{}, ch[k], { src:'Changed for '+rcLabel(ym) }); });
+  return base;
+}
+
+// ── Read portal files ─────────────────────────────────
+function rcLoadXLSX(){
+  if (typeof XLSX!=='undefined') return Promise.resolve();
+  return new Promise((res,rej) => { const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Could not load Excel library')); document.head.appendChild(s); });
+}
+// Each file type is recognised by its own column names
+const RC_SIGS = [
+  { kind:'blinkit|sales',    need:['item_id','qty_sold','mrp_gmv'] },
+  { kind:'zepto|promos',     need:['zeptoskucode','promoclaimamt'] },
+  { kind:'zepto|sales',      need:['sku number','gross merchandise value'] },
+  { kind:'instamart|promos', need:['item_code','discount_spend'] },
+  { kind:'instamart|sales',  need:['item_code','units_sold','gmv'] },
+];
+function rcDetect(rows){
+  for (let i=0; i<Math.min(rows.length,30); i++){
+    const h = (rows[i]||[]).map(x => String(x==null?'':x).trim().toLowerCase());
+    for (const sg of RC_SIGS) if (sg.need.every(n => h.includes(n))) return { kind:sg.kind, hdr:i, head:h };
+  }
+  return null;
+}
+async function rcPick(files){
+  files = [...(files||[])]; if (!files.length) return;
+  toast('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
+  try { await rcLoadXLSX(); } catch(e){ toast(e.message,'err'); return; }
+  const out = [];
+  for (const f of files){
+    try {
+      const buf = await f.arrayBuffer(), isCsv = /\.(csv|txt)$/i.test(f.name);
+      const wb = XLSX.read(buf, { type:'array', raw:isCsv, cellDates:false });
+      let hit = null, rows = null;
+      for (const sn of wb.SheetNames){
+        const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, raw:true, defval:'', blankrows:false });
+        const d = rcDetect(a); if (d){ hit = d; rows = a; break; }
+      }
+      if (!hit){ out.push({ file:f.name, err:'Not recognised. Expected one of the 5 portal exports.' }); continue; }
+      out.push(rcParse(f.name, hit, rows));
+    } catch(e){ out.push({ file:f.name, err:String(e.message||e) }); }
+  }
+  RC_UP = RC_UP && RC_UP.files ? RC_UP : { files:[], newCodes:{}, nlc:{}, adsvis:{} };
+  out.forEach(o => { RC_UP.files = RC_UP.files.filter(x => x.file!==o.file); RC_UP.files.push(o); });
+  rcFindNewCodes(); render();
+}
+function rcParse(file, hit, rows){
+  const [p,t] = hit.kind.split('|'), H = hit.head, col = n => H.indexOf(n);
+  const body = rows.slice(hit.hdr+1).filter(r => r && r.some(c => c!=='' && c!=null));
+  const recs = []; let skipped = 0;
+  if (hit.kind==='blinkit|sales'){
+    const cD=col('date'), cC=col('item_id'), cN=col('product_name'), cQ=col('qty_sold'), cG=col('mrp_gmv'), cP=col('total_brand_fund');
+    body.forEach(r => { const d=rcDate(r[cD]); if(!d){skipped++;return;} recs.push([d, String(r[cC]).trim(), String(r[cN]).trim(), rcNum(r[cQ]), rcNum(r[cG]), cP>=0?rcNum(r[cP]):0]); });
+  } else if (hit.kind==='zepto|sales'){
+    const cD=col('date'), cC=col('sku number'), cN=col('sku name'), cQ=col('sales (qty) - units'), cG=col('gross merchandise value');
+    body.forEach(r => { const d=rcDate(r[cD]); if(!d){skipped++;return;} recs.push([d, String(r[cC]).trim(), String(r[cN]).trim(), rcNum(r[cQ]), rcNum(r[cG]), 0]); });
+  } else if (hit.kind==='instamart|sales'){
+    const cD=col('ordered_date')>=0?col('ordered_date'):col('order_date'), cC=col('item_code'), cN=col('product_name'), cV=col('variant'), cQ=col('units_sold'), cG=col('gmv');
+    body.forEach(r => { const d=rcDate(r[cD]); if(!d){skipped++;return;} const v=cV>=0?String(r[cV]).trim():''; recs.push([d, String(Math.round(rcNum(r[cC]))||String(r[cC]).trim()), String(r[cN]).trim()+(/\d/.test(v)?' '+v:''), rcNum(r[cQ]), rcNum(r[cG]), 0]); });
+  } else if (hit.kind==='instamart|promos'){
+    const cD=col('order_date')>=0?col('order_date'):col('ordered_date'), cC=col('item_code'), cN=col('product_name'), cA=col('discount_spend');
+    body.forEach(r => { const d=rcDate(r[cD]); if(!d){skipped++;return;} recs.push([d, String(Math.round(rcNum(r[cC]))||String(r[cC]).trim()), String(r[cN]).trim(), 0, 0, rcNum(r[cA])]); });
+  } else if (hit.kind==='zepto|promos'){
+    // Claims come per 10-day window. Each row is spread later over the days its promo actually ran inside that window.
+    const cGF=col('generatedfrom'), cGT=col('generatedtill'), cS=col('startdate'), cE=col('enddate'), cC=col('zeptoskucode'), cN=col('skuname'), cW=col('weight'), cU=col('unitofmeasure'), cA=col('promoclaimamt');
+    body.forEach(r => {
+      const gf=rcDate(r[cGF]), gt=rcDate(r[cGT]); if(!gf||!gt){skipped++;return;}
+      let s=rcDate(r[cS])||gf, e=rcDate(r[cE])||gt; if (s<gf) s=gf; if (e>gt) e=gt; if (s>e){ s=gf; e=gt; }
+      const nm = String(r[cN]).trim()+(cW>=0&&rcNum(r[cW])?' '+rcNum(r[cW])+' '+String(r[cU]||'').toLowerCase().replace('gram','g'):'');
+      recs.push([s, e, String(r[cC]).trim(), nm, rcNum(r[cA])]);
+    });
+  }
+  const isRange = hit.kind==='zepto|promos';
+  // roll up to one row per day (or promo range) and product code; cities are not needed here
+  const agg = {}, names = {};
+  recs.forEach(r => {
+    if (isRange){ const k = r[0]+'|'+r[1]+'|'+r[2]; names[r[2]] = names[r[2]]||r[3]; const o = agg[k] = agg[k]||[r[0], r[1], r[2], names[r[2]], 0]; o[4] += r[4]; }
+    else { const k = r[0]+'|'+r[1]; names[r[1]] = names[r[1]]||r[2]; const o = agg[k] = agg[k]||[r[0], r[1], names[r[1]], 0, 0, 0]; o[3] += r[3]; o[4] += r[4]; o[5] += r[5]; }
+  });
+  const raw = recs.length; recs.length = 0;
+  Object.values(agg).forEach(o => { o.forEach((v,i) => { if (typeof v==='number') o[i] = Math.round(v*100)/100; }); recs.push(o); });
+  const dates = recs.map(r => r[0]).concat(isRange ? recs.map(r => r[1]) : []).sort();
+  const sum = i => recs.reduce((a,r)=>a+(+r[i]||0),0);
+  return { file, kind:hit.kind, p, t, recs, raw, skipped, from:dates[0], to:dates[dates.length-1],
+    qty: isRange?0:sum(3), gmv: isRange?0:sum(4), promos: isRange?sum(4):sum(5),
+    codes: [...new Set(recs.map(r => isRange ? r[2] : r[1]))] };
+}
+// Codes never seen and not matched by name need a product + cost before saving
+function rcFindNewCodes(){
+  if (!RC_UP) return;
+  RC_CODE_IX = null;
+  const keep = RC_UP.newCodes || {}; RC_UP.newCodes = {};
+  const ym = rcUpMonth(); const cost = rcCostIndex(ym);
+  RC_UP.files.filter(f => !f.err).forEach(f => {
+    const nameOf = {}; f.recs.forEach(r => { const c = f.kind==='zepto|promos' ? r[2] : r[1]; nameOf[c] = f.kind==='zepto|promos' ? r[3] : r[2]; });
+    Object.keys(nameOf).forEach(c => {
+      const m = rcMasterOf(f.p, c, nameOf[c]);
+      const k = f.p+'|'+c;
+      const needCost = m && !(cost.byP[f.p]||{})[rcMKey(m)] && !cost.any[rcMKey(m)] && !((rcMeta().codes||{})[k]||{}).cost;
+      if (!m || needCost) RC_UP.newCodes[k] = Object.assign({ p:f.p, code:c, name:nameOf[c], master:m?m.master:'', pack:m?m.pack:'', cost:'', nlc:false, price:'' , needMaster:!m }, keep[k]||{});
+    });
+  });
+}
+function rcUpMonth(){
+  if (!RC_UP || !RC_UP.files.length) return S.rcMonth || rcYm(MONTHS[MONTHS.length-1]);
+  const last = RC_UP.files.filter(f=>!f.err&&f.to).map(f=>f.to).sort().pop();
+  return last ? last.slice(0,7) : (S.rcMonth||'');
+}
+
+// ── Save ──────────────────────────────────────────────
+async function rcSave(){
+  if (!RC_UP || !RC_UP.files.filter(f=>!f.err).length){ toast('Add the portal files first','err'); return; }
+  const miss = Object.values(RC_UP.newCodes||{}).filter(n => !n.master || !(+n.cost>0) || (n.p==='instamart' && n.nlc && !(+n.price>0)));
+  if (miss.length){ toast(miss.length+' new product'+(miss.length>1?'s need':' needs')+' details first','err'); return; }
+  const btn = document.getElementById('rc-save'); if (btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const touched = {};
+    RC_UP.files.filter(f=>!f.err).forEach(f => {
+      const isRange = f.kind==='zepto|promos';
+      // which months does this file cover, and which dates inside each month
+      const byMonth = {};
+      f.recs.forEach(r => {
+        if (!isRange){ (byMonth[r[0].slice(0,7)] = byMonth[r[0].slice(0,7)]||[]).push(r); return; }
+        // a range that crosses months is cut by days
+        const days = rcDayList(r[0], r[1]), per = {};
+        days.forEach(d => { per[d.slice(0,7)] = (per[d.slice(0,7)]||0)+1; });
+        Object.keys(per).forEach(ym => { const ds = days.filter(d=>d.slice(0,7)===ym); (byMonth[ym] = byMonth[ym]||[]).push([ds[0], ds[ds.length-1], r[2], r[3], r[4]*per[ym]/days.length]); });
+      });
+      Object.keys(byMonth).forEach(ym => {
+        const key = 'rc_'+ym+'_'+f.p+'_'+f.t;
+        const old = S.data[key] || { ym, p:f.p, t:f.t, rows:[], files:[] };
+        const inMonth = (f.from<ym+'-01'?ym+'-01':f.from), toM = (f.to>ym+'-'+rcDays(ym)?ym+'-'+rcDays(ym):f.to);
+        // the new file replaces everything already saved for its dates, so nothing is counted twice
+        const keepRows = old.rows.filter(r => r[0] < inMonth || r[0] > toM);
+        const chunk = { ym, p:f.p, t:f.t, rows: keepRows.concat(byMonth[ym]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0),
+          files: (old.files||[]).filter(x => x.to < inMonth || x.from > toM).concat([{ file:f.file, from:inMonth, to:toM, at:new Date().toISOString().slice(0,16).replace('T',' ') }]) };
+        touched[key] = chunk;
+      });
+    });
+    // meta: new products, NLC changes, Ads + Vis to date
+    const meta = JSON.parse(JSON.stringify(rcMeta()));
+    meta.codes = meta.codes||{}; meta.nlc = meta.nlc||{}; meta.adsvis = meta.adsvis||{};
+    const ym = rcUpMonth();
+    Object.values(RC_UP.newCodes||{}).forEach(n => {
+      meta.codes[n.p+'|'+n.code] = { master:n.master, pack:n.pack, cost:+n.cost, name:n.name, added:ym };
+      if (n.p==='instamart' && n.nlc){ (meta.nlc[ym] = meta.nlc[ym]||{})[rcMKey(n)] = { nlc:true, price:+n.price, master:n.master, pack:n.pack }; }
+    });
+    Object.keys(RC_UP.nlc||{}).forEach(k => { (meta.nlc[ym] = meta.nlc[ym]||{})[k] = RC_UP.nlc[k]; });
+    Object.keys(RC_UP.adsvis||{}).forEach(p => { const v = RC_UP.adsvis[p]; if (v!=='' && v!=null) (meta.adsvis[ym] = meta.adsvis[ym]||{})[p] = { amt:+v, at:new Date().toISOString().slice(0,10) }; });
+    touched.rc_meta = meta;
+    for (const k of Object.keys(touched)){
+      const r = await saveChunk('cm2_chunk_'+k, touched[k]);
+      if (!r.ok) throw new Error(r.err||'Save failed');
+      S.data[k] = touched[k];
+    }
+    S.rcMonth = ym; RC_UP = null; S.rcUpOpen = false;
+    toast('Saved · Running CM2 updated for '+rcLabel(ym));
+  } catch(e){ toast('Not saved: '+e.message,'err'); }
+  render();
+}
+async function rcSaveAdsOnly(){
+  const ym = S.rcMonth; const meta = JSON.parse(JSON.stringify(rcMeta())); meta.adsvis = meta.adsvis||{};
+  RC_P.forEach(p => { const el = document.getElementById('rc-av-'+p); if (el && el.value!=='') (meta.adsvis[ym] = meta.adsvis[ym]||{})[p] = { amt:+el.value, at:new Date().toISOString().slice(0,10) }; });
+  const r = await saveChunk('cm2_chunk_rc_meta', meta);
+  if (!r.ok){ toast('Not saved: '+(r.err||''),'err'); return; }
+  S.data.rc_meta = meta; toast('Ads + Visibility saved'); render();
+}
+async function rcClearMonth(ym){
+  if (!confirm('Remove all Running CM2 uploads for '+rcLabel(ym)+'? CM2 months, projections and City Sales are not touched.')) return;
+  for (const k of Object.keys(S.data).filter(k => k.startsWith('rc_'+ym+'_'))){
+    await fetch(SHEET_IMPORT_URL+'?action=deleteChunk&chunkKey='+encodeURIComponent('cm2_chunk_'+k),{cache:'no-store'}).catch(()=>{});
+    delete S.data[k];
+  }
+  toast('Cleared '+rcLabel(ym)); render();
+}
+
+// ── Model: day level facts → weeks, month to date, products ──
+function rcProjection(ym, label){
+  const vers = typeof paVersions==='function' ? paVersions() : {};
+  const byLabel = vers[rcLabel(ym)] || {};
+  const labels = Object.keys(byLabel).sort();
+  const lb = labels.includes(label) ? label : (labels.find(l=>l.toLowerCase()==='base case') || labels[0] || null);
+  return { labels, label:lb, snaps: lb ? byLabel[lb] : {} };
+}
+function rcModel(ym, label){
+  const D = rcDays(ym), weeks = rcWeeks(ym), proj = rcProjection(ym, label), cost = rcCostIndex(ym), nlc = rcNlcState(ym);
+  const meta = rcMeta(), adsvis = (meta.adsvis||{})[ym] || {};
+  const M = { ym, D, weeks, proj, portals:{}, warn:[] };
+  RC_P.forEach(p => {
+    const pv = rcPrevCM2(p, ym), cfg = (S.data[dKey(p, rcLabel(ym))]||{}).config || (pv && pv.e.config) || S.config[p] || {};
+    const comm = (+cfg.commission||0)/100, tax = (+cfg.tax||0)/100;
+    const sn = proj.snaps[p];
+    // Direct Exp, Labour, Logistics: % used in the projection (estimate), else CM2 settings
+    const pctOf = (a,b,def) => (sn && +sn.ns>0) ? (+sn[a]||0)/(+sn.ns) : def/100;
+    const rDE = pctOf('de','ns',+cfg.directExp||0), rLab = pctOf('lab','ns',+cfg.labour||0), rLog = pctOf('log','ns',+cfg.logistics||0);
+    const sales = rcChunk(ym,p,'sales'), promoD = p==='instamart' ? rcChunk(ym,p,'promos') : null, promoR = p==='zepto' ? rcChunk(ym,p,'promos') : null;
+    const day = {}, prod = {}, noCost = {}, noMaster = {};
+    const getProd = (code, name) => {
+      const m = rcMasterOf(p, code, name);
+      const key = m ? rcMKey(m) : 'code|'+code;
+      if (!prod[key]){
+        const nl = (p==='instamart' && m) ? nlc[key] : null;
+        const c = m ? ((cost.byP[p]||{})[key] || cost.any[key] || ((meta.codes||{})[p+'|'+code]||{}).cost || 0) : (((meta.codes||{})[p+'|'+code]||{}).cost||0);
+        if (!m) noMaster[code] = name; else if (!c) noCost[key] = m.master+(m.pack?' · '+m.pack:'');
+        prod[key] = { key, label: m ? m.master+(m.pack?' · '+m.pack:'') : name, nlc: !!(nl && nl.nlc), price: nl && nl.nlc ? +nl.price||0 : 0, cost:+c||0, days:{} };
+      }
+      return prod[key];
+    };
+    const addDay = (pr, d, q, g, promo) => {
+      const x = pr.days[d] = pr.days[d] || { qty:0, gmv:0, promos:0 };
+      x.qty += q; x.gmv += g; x.promos += promo;
+    };
+    (sales ? sales.rows : []).forEach(r => { if (r[0].slice(0,7)!==ym) return; addDay(getProd(r[1], r[2]), r[0], +r[3]||0, +r[4]||0, +r[5]||0); });
+    (promoD ? promoD.rows : []).forEach(r => { if (r[0].slice(0,7)!==ym) return; addDay(getProd(r[1], r[2]), r[0], 0, 0, +r[5]||0); });
+    // Zepto: spread each claim over its promo days by that product's daily units, else evenly
+    (promoR ? promoR.rows : []).forEach(r => {
+      const pr = getProd(r[2], r[3]), ds = rcDayList(r[0], r[1]).filter(d => d.slice(0,7)===ym); if (!ds.length) return;
+      const w = ds.map(d => (pr.days[d]||{}).qty||0), tw = w.reduce((a,v)=>a+v,0);
+      ds.forEach((d,i) => addDay(pr, d, 0, 0, (+r[4]||0) * (tw>0 ? w[i]/tw : 1/ds.length)));
+    });
+    // P&L per product per day
+    const covered = new Set((sales?sales.rows:[]).filter(r=>r[0].slice(0,7)===ym).map(r=>r[0]));
+    const lastDay = [...covered].sort().pop() || null;
+    Object.values(prod).forEach(pr => {
+      Object.keys(pr.days).forEach(d => {
+        const x = pr.days[d];
+        const gross = pr.nlc ? x.qty*pr.price : x.gmv*(1-comm);
+        x.ns = gross/(1+tax); x.cogs = x.qty*pr.cost; x.de = x.ns*rDE; x.lab = x.ns*rLab; x.log = x.ns*rLog;
+        x.cm1 = x.ns - x.cogs - x.de - x.lab - x.log; x.adsvis = 0;
+      });
+    });
+    // Ads + Vis to date: spread over uploaded days and products by net sales
+    const av = adsvis[p] ? +adsvis[p].amt||0 : 0;
+    const totNs = Object.values(prod).reduce((a,pr)=>a+Object.values(pr.days).reduce((b,x)=>b+(x.ns||0),0),0);
+    if (av && totNs>0) Object.values(prod).forEach(pr => Object.values(pr.days).forEach(x => { x.adsvis = av * (x.ns||0)/totNs; }));
+    Object.values(prod).forEach(pr => Object.values(pr.days).forEach(x => { x.cm2 = x.cm1 - x.promos - x.adsvis; }));
+    M.portals[p] = { cfg, comm, tax, rates:{ de:rDE, lab:rLab, log:rLog }, prod, covered, lastDay, av, avAt: adsvis[p] ? adsvis[p].at : '', snap: sn || null,
+      noCost, noMaster, files:{ sales: sales?sales.files:[], promos: (promoD||promoR)?(promoD||promoR).files:[] } };
+    if (Object.keys(noMaster).length) M.warn.push(pLabel(p)+': '+Object.keys(noMaster).length+' product code(s) not identified');
+    if (Object.keys(noCost).length) M.warn.push(pLabel(p)+': no cost for '+Object.values(noCost).join(', '));
+  });
+  return M;
+}
+const RC_K = ['qty','gmv','ns','cogs','de','lab','log','cm1','promos','adsvis','cm2'];
+const rcBlank = () => { const a = {}; RC_K.forEach(k => a[k]=0); return a; };
+function rcSum(M, ps, from, to, prodKey){
+  const a = rcBlank();
+  ps.forEach(p => { const P = M.portals[p]; if (!P) return; Object.values(P.prod).forEach(pr => { if (prodKey && pr.key!==prodKey) return;
+    Object.keys(pr.days).forEach(d => { if (d<from || d>to) return; const x = pr.days[d]; RC_K.forEach(k => a[k] += +x[k]||0); }); }); });
+  return a;
+}
+// Projection for a set of days = monthly projection × days ÷ days in month
+function rcProjFor(M, ps, days){
+  const a = { gmv:0, ns:0, promos:0, adsvis:0, cm1:0, cm2:0, qty:0, has:false };
+  ps.forEach(p => { const sn = M.proj.snaps[p]; if (!sn) return; a.has = true; const f = days/M.D;
+    a.gmv += (+sn.gmv||0)*f; a.ns += (+sn.ns||0)*f; a.promos += (+sn.promos||0)*f; a.adsvis += (+sn.ads||0)*f; a.cm1 += (+sn.cm1||0)*f; a.cm2 += (+sn.cm2||0)*f;
+    a.qty += ((sn.skus||[]).reduce((b,s)=>b+(+s.qty||0),0))*f; });
+  return a;
+}
+
+// ── View ──────────────────────────────────────────────
+function viewRunning(){
+  RC_CODE_IX = null;
+  if (typeof ueLoadMap==='function' && !UE_MAP) ueLoadMap();
+  const have = rcMonthsWithData();
+  const now = new Date(), cur = now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2);
+  const opts = [...new Set([...have, cur])].sort();
+  const ym = S.rcMonth && opts.includes(S.rcMonth) ? S.rcMonth : (have.length ? have[have.length-1] : cur);
+  S.rcMonth = ym;
+  const M = rcModel(ym, S.rcLabel);
+  const ps = S.rcPortal && S.rcPortal!=='all' ? [S.rcPortal] : RC_P;
+  const pSeg = '<div class="rc-seg">'+[['all','All'],...RC_P.map(p=>[p,pLabel(p)])].map(([v,l])=>'<button class="'+((S.rcPortal||'all')===v?'on':'')+'" onclick="S.rcPortal=\''+v+'\';render()">'+l+'</button>').join('')+'</div>';
+  const mSel = '<select class="msel" onchange="S.rcMonth=this.value;render()">'+opts.map(m=>'<option value="'+m+'"'+(m===ym?' selected':'')+'>'+rcLabel(m)+(have.includes(m)?'':' (no uploads)')+'</option>').join('')+'</select>';
+  const lSel = M.proj.labels.length ? '<select class="msel" style="width:150px" onchange="S.rcLabel=this.value;render()">'+M.proj.labels.map(l=>'<option'+(l===M.proj.label?' selected':'')+'>'+rcEsc(l)+'</option>').join('')+'</select>' : '';
+  const upBtn = isAdmin ? '<button class="btn btn-sm" style="background:var(--green);color:#fff" onclick="S.rcUpOpen=!S.rcUpOpen;render()">⬆ Upload weekly files</button>' : '';
+  let h = rcCss()+'<div class="ph"><div><div class="ph-title">Running CM2 <span class="rc-draft">DRAFT</span></div><div class="ph-sub">'+rcLabel(ym)+' · weekly portal files vs projection'+(M.proj.label?' · '+rcEsc(M.proj.label):'')+'</div></div><div class="ph-right" style="gap:8px;flex-wrap:wrap">'+pSeg+mSel+lSel+upBtn+'</div></div>';
+  if (isAdmin && (S.rcUpOpen || RC_UP)) h += rcUploadCard(ym);
+  h += rcStatusCard(M);
+  const anyData = RC_P.some(p => M.portals[p].covered.size);
+  if (!anyData) return h + '<div class="card empty"><div class="eicon">🏃</div><p>No weekly files uploaded for '+rcLabel(ym)+' yet.'+(isAdmin?'<br>Click <b>⬆ Upload weekly files</b> to start.':'')+'</p></div>';
+  if (M.warn.length) h += '<div class="ue-map-bar warn" style="margin:0 0 14px">'+M.warn.map(rcEsc).join(' · ')+'</div>';
+  if (!M.proj.label) h += '<div class="ue-map-bar" style="margin:0 0 14px">No projection saved for '+rcLabel(ym)+' yet. Actuals are shown; targets, gaps and spend room appear once the projection is saved.</div>';
+  h += rcKpis(M, ps) + rcRoom(M, ps) + rcBrief(M, ps) + rcWeekTable(M, ps) + rcProdTable(M, ps) + rcRecon(M);
+  return h;
+}
+function rcCss(){
+  return '<style>.rc-draft{font-size:10px;font-weight:700;background:#FFF4D6;color:#9A6B00;border:1px solid #F5D98B;border-radius:10px;padding:2px 8px;vertical-align:middle;margin-left:6px}'
+   +'.rc-seg{display:flex;border:1.5px solid var(--border);border-radius:6px;overflow:hidden}.rc-seg button{padding:5px 12px;font-size:11.5px;font-weight:600;border:none;background:#fff;color:var(--tx3);cursor:pointer;font-family:Poppins,sans-serif}.rc-seg button.on{background:var(--green);color:#fff}'
+   +'.rc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.rc-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}@media(max-width:1100px){.rc-grid,.rc-grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}'
+   +'.rc-k .lbl{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}.rc-k .val{font-size:22px;font-weight:700;margin:4px 0}.rc-k .sub{font-size:12px;color:var(--tx2)}'
+   +'.rc-up{color:var(--pos);font-weight:700}.rc-dn{color:var(--neg);font-weight:700}.rc-room .val{font-size:24px}.rc-room.bad{border-color:#F3B4B9;background:#FFF6F7}.rc-room.ok{border-color:#B9E3D6;background:#F4FBF8}'
+   +'.rc-brief li{margin:6px 0 6px 18px;font-size:13px;line-height:1.5}.rc-chk td{text-align:center}.rc-chk td:first-child{text-align:left}.rc-ok{color:var(--pos);font-weight:700}.rc-no{color:#C0C8C8}'
+   +'.rc-file{font-size:12px}.rc-file td{padding:6px 8px}.rc-in{border:1.5px solid var(--border);border-radius:6px;padding:5px 8px;font-family:Poppins,sans-serif;font-size:12px;width:120px}.rc-in.wide{width:260px}'
+   +'.rc-drop{border:2px dashed var(--border);border-radius:10px;padding:18px;text-align:center;color:var(--tx3);font-size:13px;margin:0 18px 14px}</style>';
+}
+const rcVar = (act, tgt, cost) => { if (!tgt) return ''; const d = (act-tgt)/Math.abs(tgt)*100; const good = cost ? d<=0 : d>=0; return '<span class="'+(good?'rc-up':'rc-dn')+'">'+(d>=0?'▲ ':'▼ ')+Math.abs(d).toFixed(1)+'%</span>'; };
+function rcKpis(M, ps){
+  const last = ps.map(p=>M.portals[p].lastDay).filter(Boolean).sort().pop(); if (!last) return '';
+  const from = M.ym+'-01', n = +last.slice(8,10);
+  const A = rcSum(M, ps, from, last), T = rcProjFor(M, ps, n), F = rcProjFor(M, ps, M.D);
+  const est = k => A[k]/n*M.D;
+  const k = (lb, val, sub) => '<div class="card stat rc-k"><div class="lbl">'+lb+'</div><div class="val">'+val+'</div><div class="sub">'+sub+'</div></div>';
+  const cm2p = A.ns>0 ? A.cm2/A.ns*100 : 0, tcm2p = T.ns>0 ? T.cm2/T.ns*100 : 0;
+  return '<div class="rc-grid mb20">'
+    + k('GMV · 1–'+n+' '+RC_MN[+M.ym.slice(5,7)-1].slice(0,3), fmtL(A.gmv), T.has ? 'Target '+fmtL(T.gmv)+' · '+rcVar(A.gmv,T.gmv) : fmt(A.qty)+' units')
+    + k('Net Sales', fmtL(A.ns), T.has ? 'Target '+fmtL(T.ns)+' · '+rcVar(A.ns,T.ns) : fmtPct(A.gmv>0?A.ns/A.gmv*100:0)+' of GMV')
+    + k('CM2 so far', '<span class="'+(A.cm2>=0?'rc-up':'rc-dn')+'">'+fmtL(A.cm2)+'</span>', fmtPct(cm2p)+' of NS'+(T.has?' · target '+fmtPct(tcm2p):''))
+    + k('Full month at this pace', fmtL(est('gmv'))+' GMV', 'CM2 '+fmtL(est('cm2'))+(F.has?' vs projected '+fmtL(F.cm2):'')+'<br>Needed per day for rest of month: '+(F.has && n<M.D ? fmtL(Math.max(0,(F.gmv-A.gmv)/(M.D-n)))+' GMV' : '—'))
+    + '</div>';
+}
+// How much promo and ads money is left
+function rcRoom(M, ps){
+  const last = ps.map(p=>M.portals[p].lastDay).filter(Boolean).sort().pop(); if (!last) return '';
+  const n = +last.slice(8,10), left = M.D-n, A = rcSum(M, ps, M.ym+'-01', last), F = rcProjFor(M, ps, M.D);
+  if (!F.has) return '';
+  const estCM1 = A.cm1/n*M.D;
+  const allowSpend = estCM1 - F.cm2, spent = A.promos + A.adsvis, room = allowSpend - spent;
+  const mix = (F.promos+F.adsvis)>0 ? F.promos/(F.promos+F.adsvis) : 0.5;
+  const planPromoLeft = F.promos - A.promos, planAdsLeft = F.adsvis - A.adsvis;
+  const card = (lb, v, sub) => '<div class="card stat rc-k rc-room '+(v<0?'bad':'ok')+'"><div class="lbl">'+lb+'</div><div class="val '+(v<0?'rc-dn':'rc-up')+'">'+(v<0?'− ':'')+fmtL(Math.abs(v))+'</div><div class="sub">'+sub+'</div></div>';
+  return '<div class="card mb20"><div class="thead-row" style="padding:0 0 12px"><div class="thead-title">💰 Spend room · '+left+' day'+(left===1?'':'s')+' left</div><div style="font-size:11.5px;color:var(--tx3)">Ads + Vis uses the amount typed at upload</div></div><div class="rc-grid3">'
+    + card('Promos left vs plan', planPromoLeft, 'Plan '+fmtL(F.promos)+' · spent '+fmtL(A.promos)+(left>0?' · '+fmtL(Math.max(0,planPromoLeft)/left)+'/day':''))
+    + card('Ads + Vis left vs plan', planAdsLeft, 'Plan '+fmtL(F.adsvis)+' · spent '+fmtL(A.adsvis)+(left>0?' · '+fmtL(Math.max(0,planAdsLeft)/left)+'/day':''))
+    + card('Room to still hit projected CM2', room, room<0 ? 'Over by '+fmtL(-room)+' at current pace. Cut promos ≈ '+fmtL(-room*mix)+', ads ≈ '+fmtL(-room*(1-mix)) : 'Promos ≈ '+fmtL(room*mix)+' · Ads + Vis ≈ '+fmtL(room*(1-mix))+' more can be spent')
+    + '</div></div>';
+}
+function rcBrief(M, ps){
+  const last = ps.map(p=>M.portals[p].lastDay).filter(Boolean).sort().pop(); if (!last) return '';
+  const n = +last.slice(8,10), pts = [];
+  ps.forEach(p => {
+    const A = rcSum(M,[p],M.ym+'-01',last), T = rcProjFor(M,[p],n); if (!A.gmv) return;
+    const pp = A.gmv>0 ? A.promos/A.gmv*100 : 0, tp = T.gmv>0 ? T.promos/T.gmv*100 : null;
+    if (T.has){
+      const g = (A.gmv-T.gmv)/T.gmv*100;
+      pts.push('<b>'+pLabel(p)+'</b>: GMV '+(g>=0?'ahead of':'behind')+' target by '+Math.abs(g).toFixed(1)+'%. Promos at '+pp.toFixed(1)+'% of GMV vs '+tp.toFixed(1)+'% planned'+(pp>tp+0.5?', trim promos.':pp<tp-0.5?', room to push promos if sales lag.':'.')+' CM2 '+fmtPct(A.ns>0?A.cm2/A.ns*100:0)+' vs '+fmtPct(T.ns>0?T.cm2/T.ns*100:0)+' planned.');
+    } else pts.push('<b>'+pLabel(p)+'</b>: GMV '+fmtL(A.gmv)+', promos '+pp.toFixed(1)+'% of GMV, CM2 '+fmtPct(A.ns>0?A.cm2/A.ns*100:0)+' of NS.');
+  });
+  // products losing money and biggest movers
+  const prods = {};
+  ps.forEach(p => Object.values(M.portals[p].prod).forEach(pr => { const a = rcSum(M,[p],M.ym+'-01',last,pr.key); const o = prods[pr.label] = prods[pr.label]||rcBlank(); RC_K.forEach(k=>o[k]+=a[k]); }));
+  const list = Object.entries(prods).filter(([,a])=>a.gmv>0);
+  const neg = list.filter(([,a])=>a.cm2<0).sort((a,b)=>a[1].cm2-b[1].cm2).slice(0,2);
+  if (neg.length) pts.push('Negative CM2: '+neg.map(([l,a])=>l+' ('+fmtL(a.cm2)+', promos '+(a.gmv>0?(a.promos/a.gmv*100).toFixed(1):0)+'% of GMV)').join('; ')+'.');
+  const top = list.sort((a,b)=>b[1].gmv-a[1].gmv)[0];
+  if (top) pts.push('Top seller: '+top[0]+' with '+fmtL(top[1].gmv)+' GMV ('+fmtPct(list.reduce((s,[,a])=>s+a.gmv,0)>0?top[1].gmv/list.reduce((s,[,a])=>s+a.gmv,0)*100:0)+' of total).');
+  return '<div class="card mb20"><div class="thead-title" style="margin-bottom:6px">🧭 This week\'s brief</div><ul class="rc-brief">'+pts.slice(0,5).map(x=>'<li>'+x+'</li>').join('')+'</ul></div>';
+}
+function rcWeekTable(M, ps){
+  const rows = M.weeks.map(w => {
+    const covered = ps.some(p => [...M.portals[p].covered].some(d => d>=w.from && d<=w.to));
+    const A = rcSum(M, ps, w.from, w.to), T = rcProjFor(M, ps, w.days);
+    const cell = (a,t,c) => '<td class="r">'+(covered?fmtL(a):'—')+(T.has?'<div style="font-size:11px;color:var(--tx3)">'+fmtL(t)+' '+(covered?rcVar(a,t,c):'')+'</div>':'')+'</td>';
+    return '<tr><td><b>W'+w.n+'</b> · '+(+w.from.slice(8))+'–'+(+w.to.slice(8))+' <span style="color:var(--tx3);font-size:11px">('+w.days+'d)</span></td>'
+      + cell(A.gmv,T.gmv) + cell(A.ns,T.ns) + cell(A.promos,T.promos,true)
+      + '<td class="r">'+(covered && A.gmv>0?fmtPct(A.promos/A.gmv*100):'—')+'</td>'
+      + cell(A.adsvis,T.adsvis,true) + cell(A.cm2,T.cm2)
+      + '<td class="r">'+(covered && A.ns>0?'<span class="pill '+(A.cm2>=0?'pos':'neg')+'">'+fmtPct(A.cm2/A.ns*100)+'</span>':'—')+'</td></tr>';
+  }).join('');
+  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Week by week · actual vs projection</div><div style="font-size:11.5px;color:var(--tx3)">Weeks run Monday–Sunday, cut at month start and end · grey = target</div></div>'
+    + '<div class="twrap"><table class="dash-tbl"><thead><tr><th>Week</th><th class="r">GMV</th><th class="r">Net Sales</th><th class="r">Promos</th><th class="r">Promo % GMV</th><th class="r">Ads + Vis</th><th class="r">CM2</th><th class="r">CM2%</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function rcProdTable(M, ps){
+  const last = ps.map(p=>M.portals[p].lastDay).filter(Boolean).sort().pop(); if (!last) return '';
+  const n = +last.slice(8,10), f = n/M.D;
+  const prods = {};
+  ps.forEach(p => {
+    Object.values(M.portals[p].prod).forEach(pr => { const a = rcSum(M,[p],M.ym+'-01',last,pr.key); const o = prods[pr.label] = prods[pr.label]||{ a:rcBlank(), t:{gmv:0,cm2:0,promos:0}, nlc:false, ps:new Set() }; RC_K.forEach(k=>o.a[k]+=a[k]); o.nlc = o.nlc||pr.nlc; o.ps.add(p); });
+    const sn = M.proj.snaps[p];
+    (sn && sn.skus || []).forEach(s => {
+      const m = (typeof ueMapLookup==='function' && UE_MAP && UE_MAP.exact) ? ueMapLookup(p, s.name) : null;
+      const lbl = m ? m.master+(m.pack?' · '+m.pack:'') : (s.name||'');
+      const o = prods[lbl] = prods[lbl]||{ a:rcBlank(), t:{gmv:0,cm2:0,promos:0}, nlc:false, ps:new Set() };
+      o.t.gmv += (+s.gmv||0)*f; o.t.cm2 += (+s.cm2||0)*f; o.t.promos += (+s.promos||0)*f;
+    });
+  });
+  const rows = Object.entries(prods).sort((a,b)=>Math.max(b[1].a.gmv,b[1].t.gmv)-Math.max(a[1].a.gmv,a[1].t.gmv)).map(([l,o]) => {
+    const a = o.a;
+    return '<tr><td title="'+rcEsc(l)+'">'+(o.nlc?(ps.length===1?'<span class="ntag">NLC</span> ':'<span class="ntag" title="NLC on Instamart">IM NLC</span> '):'')+rcEsc(l)+'</td><td class="r">'+fmt(a.qty)+'</td><td class="r">'+fmtL(a.gmv)+(o.t.gmv?'<div style="font-size:11px;color:var(--tx3)">'+fmtL(o.t.gmv)+' '+rcVar(a.gmv,o.t.gmv)+'</div>':'')+'</td>'
+      +'<td class="r">'+fmtL(a.ns)+'</td><td class="r">'+fmtL(a.promos)+'<div style="font-size:11px;color:var(--tx3)">'+(a.gmv>0?fmtPct(a.promos/a.gmv*100)+' of GMV':'')+'</div></td><td class="r">'+fmtL(a.adsvis)+'</td>'
+      +'<td class="r '+(a.cm2>=0?'pos':'neg')+'">'+fmtL(a.cm2)+(o.t.gmv?'<div style="font-size:11px;color:var(--tx3)">'+fmtL(o.t.cm2)+'</div>':'')+'</td><td class="r">'+(a.ns>0?'<span class="pill '+(a.cm2>=0?'pos':'neg')+'">'+fmtPct(a.cm2/a.ns*100)+'</span>':'—')+'</td></tr>';
+  }).join('');
+  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Products · month to date (1–'+n+')</div><div style="font-size:11.5px;color:var(--tx3)">Same product across portals is combined by master SKU · grey = target to date</div></div>'
+    + '<div class="twrap"><table class="dash-tbl"><thead><tr><th>Product</th><th class="r">Qty</th><th class="r">GMV</th><th class="r">Net Sales</th><th class="r">Promos</th><th class="r">Ads + Vis</th><th class="r">CM2</th><th class="r">CM2%</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+// Upload status per week and portal
+function rcStatusCard(M){
+  const kinds = [['blinkit','sales','Blinkit'],['zepto','sales','Zepto sales'],['zepto','promos','Zepto promos'],['instamart','sales','Instamart sales'],['instamart','promos','Instamart promos']];
+  const cov = (p,t) => { const c = rcChunk(M.ym,p,t); if (!c) return new Set(); const s = new Set(); c.rows.forEach(r => { if (t==='promos' && p==='zepto') rcDayList(r[0],r[1]).forEach(d=>s.add(d)); else s.add(r[0]); }); return s; };
+  const rows = kinds.map(([p,t,l]) => { const s = cov(p,t); return '<tr><td>'+l+'</td>'+M.weeks.map(w => { const ds = rcDayList(w.from,w.to), have = ds.filter(d=>s.has(d)).length; return '<td>'+(have===ds.length?'<span class="rc-ok">✓</span>':have?'<span style="color:#C98A00;font-weight:700">'+have+'/'+ds.length+'</span>':'<span class="rc-no">✗</span>')+'</td>'; }).join('')+'</tr>'; }).join('');
+  const av = RC_P.map(p => { const P = M.portals[p]; return pLabel(p)+' '+(P.av?fmtL(P.av)+' <span style="color:var(--tx3)">('+P.avAt+')</span>':'<span class="rc-dn">not entered</span>'); }).join(' · ');
+  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Upload status · '+rcLabel(M.ym)+'</div><div style="font-size:11.5px;color:var(--tx3)">✓ all days in · ✗ missing</div></div>'
+    +'<div class="twrap"><table class="dash-tbl rc-chk"><thead><tr><th>File</th>'+M.weeks.map(w=>'<th>W'+w.n+' · '+(+w.from.slice(8))+'–'+(+w.to.slice(8))+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="padding:10px 18px;font-size:12px">Ads + Visibility to date: '+av+(isAdmin?' <a href="#" onclick="S.rcUpOpen=true;render();return false" style="margin-left:8px;color:var(--green);font-weight:600">update</a>':'')+(isAdmin&&rcMonthsWithData().includes(M.ym)?' <a href="#" onclick="rcClearMonth(\''+M.ym+'\');return false" style="margin-left:12px;color:var(--neg)">clear month</a>':'')+'</div></div>';
+}
+// Month end: running totals vs the CM2 month once it is saved
+function rcRecon(M){
+  const label = rcLabel(M.ym);
+  const rows = RC_P.filter(p => S.data[dKey(p,label)] && M.portals[p].covered.size).map(p => {
+    const e = S.data[dKey(p,label)], t = totals(e.skus, e.nlcSkus, e.config||S.config[p], e.portalTotals, e.nlcTotals);
+    const A = rcSum(M,[p],M.ym+'-01',M.ym+'-'+M.D);
+    const d = (a,b) => { if (!b) return '<td class="r">—</td>'; const v = (a-b)/b*100; return '<td class="r '+(Math.abs(v)<=1?'pos':'neg')+'">'+(v>=0?'+':'')+v.toFixed(2)+'%</td>'; };
+    return '<tr><td>'+pLabel(p)+(M.portals[p].covered.size<M.D?' <span style="color:var(--tx3);font-size:11px">('+M.portals[p].covered.size+'/'+M.D+' days)</span>':'')+'</td><td class="r">'+fmtL(A.gmv)+'</td><td class="r">'+fmtL(t.gmv)+'</td>'+d(A.gmv,t.gmv)
+      +'<td class="r">'+fmt(A.qty)+'</td><td class="r">'+fmt(t.qty)+'</td>'+d(A.qty,t.qty)+'<td class="r">'+fmtL(A.promos)+'</td><td class="r">'+fmtL(t.promos)+'</td>'+d(A.promos,t.promos)
+      +'<td class="r">'+fmtL(A.ns)+'</td><td class="r">'+fmtL(t.netSales)+'</td>'+d(A.ns,t.netSales)+'</tr>';
+  }).join('');
+  if (!rows) return '';
+  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Month end check · Running CM2 vs CM2 dashboard</div><div style="font-size:11.5px;color:var(--tx3)">Green within ±1%</div></div>'
+    +'<div class="twrap"><table class="dash-tbl"><thead><tr><th>Portal</th><th class="r">GMV run</th><th class="r">GMV CM2</th><th class="r">Diff</th><th class="r">Qty run</th><th class="r">Qty CM2</th><th class="r">Diff</th><th class="r">Promos run</th><th class="r">Promos CM2</th><th class="r">Diff</th><th class="r">NS run</th><th class="r">NS CM2</th><th class="r">Diff</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+
+// ── Upload card ───────────────────────────────────────
+function rcUploadCard(ym){
+  const U = RC_UP || { files:[], newCodes:{}, nlc:{}, adsvis:{} };
+  const upYm = U.files.length ? rcUpMonth() : ym;
+  const saved = (rcMeta().adsvis||{})[upYm] || {};
+  let h = '<div class="card tcard mb20" style="border:1.5px solid var(--green)"><div class="thead-row"><div class="thead-title">⬆ Upload weekly files</div><div style="font-size:11.5px;color:var(--tx3)">Blinkit (1 file) · Zepto sales + promos · Instamart sales + promos. Re-uploading the same dates replaces them.</div></div>'
+    + '<div class="rc-drop">Pick all files together <input type="file" multiple accept=".csv,.xlsx,.xls" onchange="rcPick(this.files)" style="margin-left:10px"></div>';
+  if (U.files.length){
+    h += '<div class="twrap" style="max-height:none"><table class="dash-tbl rc-file"><thead><tr><th>File</th><th>Found as</th><th>Dates</th><th class="r">Rows</th><th class="r">Qty</th><th class="r">GMV</th><th class="r">Promos</th><th></th></tr></thead><tbody>'
+      + U.files.map((f,i) => f.err ? '<tr><td>'+rcEsc(f.file)+'</td><td colspan="6" class="neg">'+rcEsc(f.err)+'</td><td><a href="#" onclick="RC_UP.files.splice('+i+',1);render();return false">remove</a></td></tr>'
+        : '<tr><td>'+rcEsc(f.file)+'</td><td><b>'+RC_KINDS[f.kind]+'</b></td><td>'+f.from+' → '+f.to+'</td><td class="r">'+fmt(f.raw||f.recs.length)+'</td><td class="r">'+(f.qty?fmt(f.qty):'—')+'</td><td class="r">'+(f.gmv?fmtL(f.gmv):'—')+'</td><td class="r">'+(f.promos?fmtL(f.promos):'—')+'</td><td><a href="#" onclick="RC_UP.files.splice('+i+',1);rcFindNewCodes();render();return false">remove</a></td></tr>').join('')
+      + '</tbody></table></div>';
+    const gotKinds = new Set(U.files.filter(f=>!f.err).map(f=>f.kind));
+    const missing = Object.keys(RC_KINDS).filter(k=>!gotKinds.has(k)).map(k=>RC_KINDS[k]);
+    if (missing.length) h += '<div style="padding:6px 18px;font-size:12px;color:#9A6B00">Not in this upload: '+missing.join(', ')+'. That is fine if they come later.</div>';
+  }
+  // New products: only when a code was never seen
+  const nc = Object.values(U.newCodes||{});
+  if (nc.length){
+    const masters = rcMasterList();
+    h += '<div style="padding:12px 18px"><div class="thead-title" style="color:#9A6B00">🆕 New product'+(nc.length>1?'s':'')+' found · fill before saving</div><table class="dash-tbl rc-file" style="margin-top:8px"><thead><tr><th>Portal</th><th>Name in file</th><th>Master product</th><th>Pack</th><th>Cost / unit ₹</th><th>NLC (Instamart)</th></tr></thead><tbody>'
+      + nc.map(n => { const k = n.p+'|'+n.code, id = btoa(unescape(encodeURIComponent(k))).replace(/=/g,'');
+        return '<tr><td>'+pLabel(n.p)+'</td><td style="max-width:320px;white-space:normal">'+rcEsc(n.name)+'<div style="font-size:10.5px;color:var(--tx3)">code '+rcEsc(n.code)+'</div></td>'
+          + '<td><input class="rc-in wide" list="rc-masters" value="'+rcEsc(n.master)+'" placeholder="Pick or type new" onchange="rcSetNew(\''+id+'\',\'master\',this.value)"></td>'
+          + '<td><input class="rc-in" style="width:70px" value="'+rcEsc(n.pack)+'" placeholder="57g" onchange="rcSetNew(\''+id+'\',\'pack\',this.value)"></td>'
+          + '<td><input class="rc-in" type="number" step="0.01" value="'+rcEsc(n.cost)+'" onchange="rcSetNew(\''+id+'\',\'cost\',this.value)"></td>'
+          + '<td>'+(n.p==='instamart'?'<label><input type="checkbox"'+(n.nlc?' checked':'')+' onchange="rcSetNew(\''+id+'\',\'nlc\',this.checked)"> NLC</label> <input class="rc-in" style="width:80px" type="number" step="0.01" placeholder="Gross ₹" value="'+rcEsc(n.price)+'" onchange="rcSetNew(\''+id+'\',\'price\',this.value)">':'—')+'</td></tr>'; }).join('')
+      + '</tbody></table><datalist id="rc-masters">'+masters.map(m=>'<option value="'+rcEsc(m)+'">').join('')+'</datalist></div>';
+  }
+  // NLC changes for Instamart (collapsed)
+  if (U.files.some(f => f.p==='instamart' && !f.err)) h += rcNlcBox(upYm, U);
+  // Ads + Vis
+  h += '<div style="padding:12px 18px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end"><div class="thead-title" style="width:100%">Ads + Visibility spent so far in '+rcLabel(upYm)+' (₹, total to date)</div>'
+    + RC_P.map(p => '<div><div style="font-size:11px;color:var(--tx3);font-weight:600">'+pLabel(p)+'</div><input id="rc-av-'+p+'" class="rc-in" type="number" value="'+(U.adsvis&&U.adsvis[p]!=null?U.adsvis[p]:(saved[p]?saved[p].amt:''))+'" onchange="RC_UP=RC_UP||{files:[],newCodes:{},nlc:{},adsvis:{}};RC_UP.adsvis[\''+p+'\']=this.value"></div>').join('')
+    + (!U.files.length?'<button class="btn btn-outline btn-sm" onclick="rcSaveAdsOnly()">Save Ads + Vis only</button>':'')+'</div>';
+  h += '<div style="padding:4px 18px 16px;display:flex;gap:10px;align-items:center"><button id="rc-save" class="btn btn-sm" style="background:var(--green);color:#fff;padding:8px 18px"'+(U.files.filter(f=>!f.err).length?'':' disabled')+' onclick="rcSave()">💾 Save upload</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="RC_UP=null;S.rcUpOpen=false;render()">Cancel</button></div></div>';
+  return h;
+}
+function rcMasterList(){
+  const s = new Set();
+  if (UE_MAP && UE_MAP.exact) Object.values(UE_MAP.exact).forEach(v => s.add(v.master));
+  Object.values((rcMeta().codes)||{}).forEach(v => v.master && s.add(v.master));
+  return [...s].sort();
+}
+function rcSetNew(id, field, val){
+  const k = decodeURIComponent(escape(atob(id + '==='.slice((id.length+3)%4))));
+  const n = RC_UP && RC_UP.newCodes[k]; if (!n) return;
+  n[field] = val;
+  if (field==='master' && val){ const v = rcMasterList().includes(val); if (v && UE_MAP && UE_MAP.exact){ const hit = Object.values(UE_MAP.exact).find(x=>x.master===val); if (hit && !n.pack) n.pack = hit.pack; } }
+  if (field==='master' || field==='nlc') render();
+}
+function rcNlcBox(ym, U){
+  const st = rcNlcState(ym);
+  const im = U.files.filter(f => f.p==='instamart' && f.t==='sales' && !f.err);
+  const prods = {};
+  im.forEach(f => f.recs.forEach(r => { const m = rcMasterOf('instamart', r[1], r[2]); if (m) prods[rcMKey(m)] = { m, qty:(prods[rcMKey(m)]||{}).qty+r[3]||r[3] }; }));
+  Object.keys(st).forEach(k => { if (!prods[k] && st[k].nlc) prods[k] = { m:{ master:st[k].master, pack:st[k].pack }, qty:0 }; });
+  const ch = U.nlc || {};
+  const row = (k,o) => {
+    const isN = ch[k] ? ch[k].nlc : !!(st[k] && st[k].nlc), was = !!(st[k] && st[k].nlc), changed = !!ch[k];
+    return '<tr'+(changed?' style="background:#FFFBEA"':'')+'><td>'+rcEsc(o.m.master+(o.m.pack?' · '+o.m.pack:''))+'</td><td class="r">'+fmt(o.qty||0)+'</td><td>'+(was?'NLC ₹'+(st[k].price||''):'Regular')+'</td>'
+      + '<td><label><input type="checkbox"'+(isN?' checked':'')+' onchange="rcNlcSet(\''+encodeURIComponent(k)+'\',this.checked)"> NLC</label>'
+      + (isN && !was ? ' <input class="rc-in" style="width:90px" type="number" step="0.01" placeholder="Gross ₹" value="'+((ch[k]&&ch[k].price)||'')+'" onchange="rcNlcPrice(\''+encodeURIComponent(k)+'\',this.value)">' : '')+'</td></tr>';
+  };
+  const ks = Object.keys(prods).sort((a,b)=>(st[b]&&st[b].nlc?1:0)-(st[a]&&st[a].nlc?1:0) || (prods[b].qty||0)-(prods[a].qty||0));
+  return '<div style="padding:4px 18px 8px"><details'+(Object.keys(ch).length?' open':'')+'><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--green)">Any NLC change this month on Instamart? ('+Object.values(st).filter(x=>x.nlc).length+' products NLC now)</summary>'
+    + '<div style="font-size:11.5px;color:var(--tx3);margin:6px 0">Changes apply from the 1st of '+rcLabel(ym)+'. Moving a product to NLC needs its gross price.</div>'
+    + '<table class="dash-tbl rc-file"><thead><tr><th>Product</th><th class="r">Units in file</th><th>Last month</th><th>This month</th></tr></thead><tbody>'+ks.map(k=>row(k,prods[k])).join('')+'</tbody></table></details></div>';
+}
+function rcNlcSet(ek, on){
+  const k = decodeURIComponent(ek), ym = rcUpMonth(), st = rcNlcState(ym)[k] || {};
+  RC_UP.nlc = RC_UP.nlc || {};
+  if (!!st.nlc === on) delete RC_UP.nlc[k];
+  else { const [master, pack] = k.split('|'); RC_UP.nlc[k] = { nlc:on, price: on ? '' : 0, master: (st.master||master), pack:(st.pack||pack) }; }
+  render();
+}
+function rcNlcPrice(ek, v){ const k = decodeURIComponent(ek); if (RC_UP && RC_UP.nlc && RC_UP.nlc[k]) RC_UP.nlc[k].price = +v; }
+
+// ── Enter Data hint: product tagged NLC by the ecom team but entered as regular (or the reverse) ──
+function rcNlcWarn(monthLabel){
+  RC_CODE_IX = null;
+  const ym = rcYm(monthLabel); if (!ym) return '';
+  const ch = (rcMeta().nlc||{})[ym]; if (!ch || !Object.keys(ch).length) return '';
+  if (typeof ueMapLookup!=='function' || !UE_MAP || !UE_MAP.exact){ if (typeof ueLoadMap==='function') ueLoadMap(); return ''; }
+  const keyOf = s => { const m = ueMapLookup('instamart', s.name); return m ? rcMKey(m) : null; };
+  const msgs = [];
+  (ES.skus||[]).forEach(s => { const k = keyOf(s); if (k && ch[k] && ch[k].nlc) msgs.push('<b>'+rcEsc(shortN(s.name))+'</b> is tagged <b>NLC</b> (gross ₹'+ch[k].price+') for '+monthLabel+' but is entered under regular SKUs.'); });
+  (ES.nlcSkus||[]).forEach(s => { const k = keyOf(s); if (k && ch[k] && ch[k].nlc===false) msgs.push('<b>'+rcEsc(shortN(s.name))+'</b> was moved back to <b>regular</b> for '+monthLabel+' but is entered under NLC SKUs.'); });
+  return msgs.length ? '<div class="ue-map-bar warn" style="margin:0 0 14px">⚠ NLC check from Running CM2 uploads: '+msgs.join(' ')+'</div>' : '';
+}
+
 // ── Render ────────────────────────────────────────────
 function render(){
   let body='';
@@ -3300,6 +3905,7 @@ function render(){
   else if(S.view==='insights')  body=viewInsights();
   else if(S.view==='unit')      body=viewUnitEconomics();
   else if(S.view==='pa')        body=viewProjVsActual();
+  else if(S.view==='running')   body=viewRunning();
   document.getElementById('app').innerHTML='<div class="shell">'+sidebar()+'<main class="main">'+body+'</main></div>';
   document.querySelectorAll('main script').forEach(function(s){var el=document.createElement('script');el.textContent=s.textContent;document.body.appendChild(el);});
   syncSidebarOffset();
