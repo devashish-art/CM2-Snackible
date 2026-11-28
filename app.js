@@ -3297,7 +3297,7 @@ function syncSidebarOffset(){
 //    rc_meta                        → new product codes, NLC changes, Ads + Vis to date
 // ═══════════════════════════════════════════════════════
 const RC_P = ['blinkit','zepto','instamart'];
-const RC_KINDS = { 'blinkit|sales':'Blinkit sales + promos', 'zepto|sales':'Zepto sales', 'zepto|promos':'Zepto promos', 'instamart|sales':'Instamart sales', 'instamart|promos':'Instamart promos' };
+const RC_KINDS = { 'blinkit|sales':'Blinkit Sales + Promos', 'zepto|sales':'Zepto Sales', 'zepto|promos':'Zepto Promos', 'instamart|sales':'Instamart Sales', 'instamart|promos':'Instamart Promos' };
 const RC_MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const rcYm = label => { const [m,y] = String(label||'').split(' '); const i = RC_MN.indexOf(m); return i<0 ? '' : y+'-'+('0'+(i+1)).slice(-2); };
 const rcLabel = ym => RC_MN[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
@@ -3570,12 +3570,16 @@ async function rcClearMonth(ym){
 }
 
 // ── Model: day level facts → weeks, month to date, products ──
+// Only three scenarios are compared: Base, Best and Worst Case (other saved labels are ignored)
+const RC_SCEN = ['Base Case','Best Case','Worst Case'];
+function rcScenOf(l){ const x = String(l||'').toLowerCase(); return x.includes('worst') ? 'Worst Case' : x.includes('best') ? 'Best Case' : x.includes('base') ? 'Base Case' : null; }
 function rcProjection(ym, label){
   const vers = typeof paVersions==='function' ? paVersions() : {};
-  const byLabel = vers[rcLabel(ym)] || {};
-  const labels = Object.keys(byLabel).sort();
-  const lb = labels.includes(label) ? label : (labels.find(l=>l.toLowerCase()==='base case') || labels[0] || null);
-  return { labels, label:lb, snaps: lb ? byLabel[lb] : {} };
+  const byLabel = vers[rcLabel(ym)] || {}, scen = {};
+  Object.keys(byLabel).forEach(l => { const sc = rcScenOf(l); if (sc && !scen[sc]) scen[sc] = byLabel[l]; });
+  const labels = RC_SCEN.filter(sc => scen[sc]);
+  const lb = labels.includes(label) ? label : (labels.includes('Base Case') ? 'Base Case' : labels[0] || null);
+  return { labels, label:lb, snaps: lb ? scen[lb] : {} };
 }
 function rcModel(ym, label){
   const D = rcDays(ym), weeks = rcWeeks(ym), proj = rcProjection(ym, label), cost = rcCostIndex(ym), nlc = rcNlcState(ym);
@@ -3659,22 +3663,24 @@ function viewRunning(){
   if (typeof ueLoadMap==='function' && !UE_MAP) ueLoadMap();
   const have = rcMonthsWithData();
   const now = new Date(), cur = now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2);
-  const opts = [...new Set([...have, cur])].sort();
+  const pv = typeof paVersions==='function' ? paVersions() : {};
+  const projM = Object.keys(pv).filter(m => Object.keys(pv[m]).some(rcScenOf)).map(rcYm).filter(Boolean);
+  const opts = [...new Set([...have, ...projM, cur])].sort();
   const ym = S.rcMonth && opts.includes(S.rcMonth) ? S.rcMonth : (have.length ? have[have.length-1] : cur);
   S.rcMonth = ym;
   const M = rcModel(ym, S.rcLabel);
   const ps = S.rcPortal && S.rcPortal!=='all' ? [S.rcPortal] : RC_P;
   const pSeg = '<div class="rc-seg">'+[['all','All'],...RC_P.map(p=>[p,pLabel(p)])].map(([v,l])=>'<button class="'+((S.rcPortal||'all')===v?'on':'')+'" onclick="S.rcPortal=\''+v+'\';render()">'+l+'</button>').join('')+'</div>';
-  const mSel = '<select class="msel" onchange="S.rcMonth=this.value;render()">'+opts.map(m=>'<option value="'+m+'"'+(m===ym?' selected':'')+'>'+rcLabel(m)+(have.includes(m)?'':' (no uploads)')+'</option>').join('')+'</select>';
-  const lSel = M.proj.labels.length ? '<select class="msel" style="width:150px" onchange="S.rcLabel=this.value;render()">'+M.proj.labels.map(l=>'<option'+(l===M.proj.label?' selected':'')+'>'+rcEsc(l)+'</option>').join('')+'</select>' : '';
+  const mSel = '<select class="msel" onchange="S.rcMonth=this.value;render()">'+opts.map(m=>'<option value="'+m+'"'+(m===ym?' selected':'')+'>'+rcLabel(m)+(have.includes(m)?'':' (No Uploads)')+'</option>').join('')+'</select>';
+  const lSel = '<div class="rc-seg" title="Projection to compare against">'+RC_SCEN.map(sc => { const ok = M.proj.labels.includes(sc); return '<button class="'+(sc===M.proj.label?'on':'')+'"'+(ok?' onclick="S.rcLabel=\''+sc+'\';render()"':' disabled style="opacity:.45;cursor:not-allowed" title="'+sc+' not saved for this month"')+'>'+sc.replace(' Case','')+'</button>'; }).join('')+'</div>';
   const upBtn = isAdmin ? '<button class="btn btn-sm" style="background:var(--green);color:#fff" onclick="S.rcUpOpen=!S.rcUpOpen;render()">⬆ Upload weekly files</button>' : '';
-  let h = rcCss()+'<div class="ph"><div><div class="ph-title">Running CM2 <span class="rc-draft">DRAFT</span></div><div class="ph-sub">'+rcLabel(ym)+' · weekly portal files vs projection'+(M.proj.label?' · '+rcEsc(M.proj.label):'')+'</div></div><div class="ph-right" style="gap:8px;flex-wrap:wrap">'+pSeg+mSel+lSel+upBtn+'</div></div>';
+  let h = rcCss()+'<div class="ph"><div><div class="ph-title">Running CM2 <span class="rc-draft">DRAFT</span></div><div class="ph-sub">'+rcLabel(ym)+' · Weekly Portal Files vs Projection'+(M.proj.label?' · Compared with '+M.proj.label+' projection':' · No Base, Best or Worst Case projection saved yet')+'</div></div><div class="ph-right" style="gap:8px;flex-wrap:wrap">'+pSeg+mSel+lSel+upBtn+'</div></div>';
   if (isAdmin && (S.rcUpOpen || RC_UP)) h += rcUploadCard(ym);
   h += rcStatusCard(M);
   const anyData = RC_P.some(p => M.portals[p].covered.size);
   if (!anyData) return h + '<div class="card empty"><div class="eicon">🏃</div><p>No weekly files uploaded for '+rcLabel(ym)+' yet.'+(isAdmin?'<br>Click <b>⬆ Upload weekly files</b> to start.':'')+'</p></div>';
   if (M.warn.length) h += '<div class="ue-map-bar warn" style="margin:0 0 14px">'+M.warn.map(rcEsc).join(' · ')+'</div>';
-  if (!M.proj.label) h += '<div class="ue-map-bar" style="margin:0 0 14px">No projection saved for '+rcLabel(ym)+' yet. Actuals are shown; targets, gaps and spend room appear once the projection is saved.</div>';
+  if (!M.proj.label) h += '<div class="ue-map-bar" style="margin:0 0 14px">No Base, Best or Worst Case projection saved for '+rcLabel(ym)+' yet. Actuals are shown; targets, gaps and spend room appear once the projection is saved.</div>';
   h += rcKpis(M, ps) + rcRoom(M, ps) + rcBrief(M, ps) + rcWeekTable(M, ps) + rcProdTable(M, ps) + rcRecon(M);
   return h;
 }
@@ -3779,13 +3785,13 @@ function rcProdTable(M, ps){
 }
 // Upload status per week and portal
 function rcStatusCard(M){
-  const kinds = [['blinkit','sales','Blinkit'],['zepto','sales','Zepto sales'],['zepto','promos','Zepto promos'],['instamart','sales','Instamart sales'],['instamart','promos','Instamart promos']];
+  const kinds = [['blinkit','sales','Blinkit Sales + Promos'],['zepto','sales','Zepto Sales'],['zepto','promos','Zepto Promos'],['instamart','sales','Instamart Sales'],['instamart','promos','Instamart Promos']];
   const cov = (p,t) => { const c = rcChunk(M.ym,p,t); if (!c) return new Set(); const s = new Set(); c.rows.forEach(r => { if (t==='promos' && p==='zepto') rcDayList(r[0],r[1]).forEach(d=>s.add(d)); else s.add(r[0]); }); return s; };
   const rows = kinds.map(([p,t,l]) => { const s = cov(p,t); return '<tr><td>'+l+'</td>'+M.weeks.map(w => { const ds = rcDayList(w.from,w.to), have = ds.filter(d=>s.has(d)).length; return '<td>'+(have===ds.length?'<span class="rc-ok">✓</span>':have?'<span style="color:#C98A00;font-weight:700">'+have+'/'+ds.length+'</span>':'<span class="rc-no">✗</span>')+'</td>'; }).join('')+'</tr>'; }).join('');
-  const av = RC_P.map(p => { const P = M.portals[p]; return pLabel(p)+' '+(P.av?fmtL(P.av)+' <span style="color:var(--tx3)">('+P.avAt+')</span>':'<span class="rc-dn">not entered</span>'); }).join(' · ');
-  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Upload status · '+rcLabel(M.ym)+'</div><div style="font-size:11.5px;color:var(--tx3)">✓ all days in · ✗ missing</div></div>'
+  const av = RC_P.map(p => { const P = M.portals[p]; return pLabel(p)+' '+(P.av?fmtL(P.av)+' <span style="color:var(--tx3)">('+P.avAt+')</span>':'<span class="rc-dn">Not Entered</span>'); }).join(' · ');
+  return '<div class="card tcard mb20"><div class="thead-row"><div class="thead-title">Upload Status · '+rcLabel(M.ym)+'</div><div style="font-size:11.5px;color:var(--tx3)">✓ All Days In · ✗ Missing</div></div>'
     +'<div class="twrap"><table class="dash-tbl rc-chk"><thead><tr><th>File</th>'+M.weeks.map(w=>'<th>W'+w.n+' · '+(+w.from.slice(8))+'–'+(+w.to.slice(8))+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="padding:10px 18px;font-size:12px">Ads + Visibility to date: '+av+(isAdmin?' <a href="#" onclick="S.rcUpOpen=true;render();return false" style="margin-left:8px;color:var(--green);font-weight:600">update</a>':'')+(isAdmin&&rcMonthsWithData().includes(M.ym)?' <a href="#" onclick="rcClearMonth(\''+M.ym+'\');return false" style="margin-left:12px;color:var(--neg)">clear month</a>':'')+'</div></div>';
+    +'<div style="padding:10px 18px;font-size:12px">Ads + Visibility to Date: '+av+(isAdmin?' <a href="#" onclick="S.rcUpOpen=true;render();return false" style="margin-left:8px;color:var(--green);font-weight:600">Update</a>':'')+(isAdmin&&rcMonthsWithData().includes(M.ym)?' <a href="#" onclick="rcClearMonth(\''+M.ym+'\');return false" style="margin-left:12px;color:var(--neg)">Clear Month</a>':'')+'</div></div>';
 }
 // Month end: running totals vs the CM2 month once it is saved
 function rcRecon(M){
